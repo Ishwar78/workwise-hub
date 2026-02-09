@@ -20,6 +20,7 @@ import SettingsPage from "./pages/SettingsPage";
 import SuperAdmin from "./pages/SuperAdmin";
 import ActivityDashboard from "./pages/ActivityDashboard";
 import ApiSpecification from "./pages/ApiSpecification";
+import NotificationsPage from "./pages/NotificationsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,6 +48,7 @@ const App = () => (
           <Route path="/dashboard/settings" element={<SettingsPage />} />
           <Route path="/dashboard/activity" element={<ActivityDashboard />} />
           <Route path="/dashboard/api-spec" element={<ApiSpecification />} />
+          <Route path="/dashboard/notifications" element={<NotificationsPage />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
           <Route path="/super-admin" element={<SuperAdmin />} />
           <Route path="/super-admin/*" element={<SuperAdmin />} />
