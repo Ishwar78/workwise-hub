@@ -12,6 +12,8 @@ import Dashboard from "./pages/Dashboard";
 import Screenshots from "./pages/Screenshots";
 import TimeLogs from "./pages/TimeLogs";
 import AppUsage from "./pages/AppUsage";
+import Billing from "./pages/Billing";
+import Reports from "./pages/Reports";
 import InviteMembers from "./pages/InviteMembers";
 import SuperAdmin from "./pages/SuperAdmin";
 import NotFound from "./pages/NotFound";
@@ -35,6 +37,8 @@ const App = () => (
           <Route path="/dashboard/time" element={<TimeLogs />} />
           <Route path="/dashboard/usage" element={<AppUsage />} />
           <Route path="/dashboard/invite" element={<InviteMembers />} />
+          <Route path="/dashboard/billing" element={<Billing />} />
+          <Route path="/dashboard/reports" element={<Reports />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
           <Route path="/super-admin" element={<SuperAdmin />} />
           <Route path="/super-admin/*" element={<SuperAdmin />} />
