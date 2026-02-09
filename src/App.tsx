@@ -15,6 +15,8 @@ import AppUsage from "./pages/AppUsage";
 import Billing from "./pages/Billing";
 import Reports from "./pages/Reports";
 import InviteMembers from "./pages/InviteMembers";
+import TeamManagement from "./pages/TeamManagement";
+import SettingsPage from "./pages/SettingsPage";
 import SuperAdmin from "./pages/SuperAdmin";
 import NotFound from "./pages/NotFound";
 
@@ -39,6 +41,8 @@ const App = () => (
           <Route path="/dashboard/invite" element={<InviteMembers />} />
           <Route path="/dashboard/billing" element={<Billing />} />
           <Route path="/dashboard/reports" element={<Reports />} />
+          <Route path="/dashboard/team" element={<TeamManagement />} />
+          <Route path="/dashboard/settings" element={<SettingsPage />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
           <Route path="/super-admin" element={<SuperAdmin />} />
           <Route path="/super-admin/*" element={<SuperAdmin />} />
