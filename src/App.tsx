@@ -21,6 +21,7 @@ import SuperAdmin from "./pages/SuperAdmin";
 import ActivityDashboard from "./pages/ActivityDashboard";
 import ApiSpecification from "./pages/ApiSpecification";
 import NotificationsPage from "./pages/NotificationsPage";
+import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/download" element={<Download />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/dashboard" element={<Dashboard />} />
