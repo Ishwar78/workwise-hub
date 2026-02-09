@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import DashboardLayout from "@/components/DashboardLayout";
+import { PageGuard } from "@/components/RoleGuard";
 
 const mockUsers = ["All Users", "Alice Johnson", "Bob Smith", "Carol White", "David Lee", "Eva Brown"];
 
@@ -48,6 +49,7 @@ const Reports = () => {
 
   return (
     <DashboardLayout>
+      <PageGuard permission="view_reports">
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -175,6 +177,7 @@ const Reports = () => {
           </div>
         </motion.div>
       </div>
+      </PageGuard>
     </DashboardLayout>
   );
 };

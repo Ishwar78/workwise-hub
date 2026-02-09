@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { PageGuard } from "@/components/RoleGuard";
 import {
   CreditCard, Check, ArrowRight, Receipt, Calendar, Users, HardDrive, Camera,
   AlertTriangle, Download, ArrowUpDown, Pause, Play, Shield, Clock, FileText,
@@ -94,6 +95,7 @@ const Billing = () => {
 
   return (
     <DashboardLayout>
+      <PageGuard permission="manage_billing">
       <div className="space-y-6 max-w-4xl">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -380,6 +382,7 @@ const Billing = () => {
           </DialogContent>
         </Dialog>
       </div>
+      </PageGuard>
     </DashboardLayout>
   );
 };

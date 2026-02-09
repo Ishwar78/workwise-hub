@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Globe, Monitor, Calendar, User, ExternalLink } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import DashboardLayout from "@/components/DashboardLayout";
+import { PageGuard } from "@/components/RoleGuard";
 
 const mockUsers = ["All Users", "Alice Johnson", "Bob Smith", "Carol White", "David Lee", "Eva Brown"];
 
@@ -48,6 +49,7 @@ const AppUsage = () => {
 
   return (
     <DashboardLayout>
+      <PageGuard permission="view_app_usage">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -202,6 +204,7 @@ const AppUsage = () => {
           </div>
         </motion.div>
       </div>
+      </PageGuard>
     </DashboardLayout>
   );
 };

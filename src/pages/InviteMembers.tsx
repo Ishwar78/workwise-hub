@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import DashboardLayout from "@/components/DashboardLayout";
+import { PageGuard } from "@/components/RoleGuard";
 
 const planLimits = { name: "Professional", maxUsers: 25, currentUsers: 18 };
 
@@ -44,6 +45,7 @@ const InviteMembers = () => {
 
   return (
     <DashboardLayout>
+      <PageGuard permission="invite_members">
       <div className="space-y-6 max-w-3xl">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -174,6 +176,7 @@ const InviteMembers = () => {
           </div>
         </motion.div>
       </div>
+      </PageGuard>
     </DashboardLayout>
   );
 };
