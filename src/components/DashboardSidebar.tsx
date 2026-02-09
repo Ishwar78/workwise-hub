@@ -3,9 +3,10 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Clock, Camera, Globe, BarChart3,
   Settings, CreditCard, LogOut, ChevronLeft, UserPlus, Building2,
-  Activity, FileText
+  Activity, FileText, Bell
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NotificationBell, NotificationDropdown, useNotifications } from "@/components/NotificationCenter";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -17,6 +18,7 @@ const menuItems = [
   { icon: BarChart3, label: "Reports", path: "/dashboard/reports" },
   { icon: UserPlus, label: "Invite Members", path: "/dashboard/invite" },
   { icon: FileText, label: "API Spec", path: "/dashboard/api-spec" },
+  { icon: Bell, label: "Notifications", path: "/dashboard/notifications" },
   { icon: CreditCard, label: "Billing", path: "/dashboard/billing" },
   { icon: Settings, label: "Settings", path: "/dashboard/settings" },
 ];
