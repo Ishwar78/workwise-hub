@@ -9,6 +9,9 @@ import Login from "./pages/Login";
 import Download from "./pages/Download";
 import Contact from "./pages/Contact";
 import Dashboard from "./pages/Dashboard";
+import Screenshots from "./pages/Screenshots";
+import InviteMembers from "./pages/InviteMembers";
+import SuperAdmin from "./pages/SuperAdmin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,7 +29,11 @@ const App = () => (
           <Route path="/download" element={<Download />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard/screenshots" element={<Screenshots />} />
+          <Route path="/dashboard/invite" element={<InviteMembers />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
+          <Route path="/super-admin" element={<SuperAdmin />} />
+          <Route path="/super-admin/*" element={<SuperAdmin />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
