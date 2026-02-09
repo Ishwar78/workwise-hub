@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,9 +59,11 @@ const Login = () => {
 
             <p className="text-center text-sm text-muted-foreground mt-4">
               {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
-              <button onClick={() => setIsSignUp(!isSignUp)} className="text-primary hover:underline">
-                {isSignUp ? "Sign in" : "Sign up"}
-              </button>
+              {isSignUp ? (
+                <button onClick={() => setIsSignUp(false)} className="text-primary hover:underline">Sign in</button>
+              ) : (
+                <Link to="/onboarding" className="text-primary hover:underline">Sign up</Link>
+              )}
             </p>
           </div>
         </motion.div>
