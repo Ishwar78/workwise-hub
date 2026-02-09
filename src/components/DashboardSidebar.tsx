@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Clock, Camera, Globe, BarChart3,
-  Settings, CreditCard, LogOut, ChevronLeft, UserPlus, Building2
+  Settings, CreditCard, LogOut, ChevronLeft, UserPlus, Building2,
+  Activity, FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,8 +13,10 @@ const menuItems = [
   { icon: Clock, label: "Time Logs", path: "/dashboard/time" },
   { icon: Camera, label: "Screenshots", path: "/dashboard/screenshots" },
   { icon: Globe, label: "App & URL Usage", path: "/dashboard/usage" },
+  { icon: Activity, label: "Activity Feed", path: "/dashboard/activity" },
   { icon: BarChart3, label: "Reports", path: "/dashboard/reports" },
   { icon: UserPlus, label: "Invite Members", path: "/dashboard/invite" },
+  { icon: FileText, label: "API Spec", path: "/dashboard/api-spec" },
   { icon: CreditCard, label: "Billing", path: "/dashboard/billing" },
   { icon: Settings, label: "Settings", path: "/dashboard/settings" },
 ];
