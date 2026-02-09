@@ -10,6 +10,8 @@ import Download from "./pages/Download";
 import Contact from "./pages/Contact";
 import Dashboard from "./pages/Dashboard";
 import Screenshots from "./pages/Screenshots";
+import TimeLogs from "./pages/TimeLogs";
+import AppUsage from "./pages/AppUsage";
 import InviteMembers from "./pages/InviteMembers";
 import SuperAdmin from "./pages/SuperAdmin";
 import NotFound from "./pages/NotFound";
@@ -30,6 +32,8 @@ const App = () => (
           <Route path="/contact" element={<Contact />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/dashboard/screenshots" element={<Screenshots />} />
+          <Route path="/dashboard/time" element={<TimeLogs />} />
+          <Route path="/dashboard/usage" element={<AppUsage />} />
           <Route path="/dashboard/invite" element={<InviteMembers />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
           <Route path="/super-admin" element={<SuperAdmin />} />
