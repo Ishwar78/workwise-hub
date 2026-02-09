@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import DashboardLayout from "@/components/DashboardLayout";
+import { PageGuard } from "@/components/RoleGuard";
 
 const mockUsers = ["All Users", "Alice Johnson", "Bob Smith", "Carol White", "David Lee", "Eva Brown"];
 const mockDates = ["2026-02-09", "2026-02-08", "2026-02-07", "2026-02-06"];
@@ -46,6 +47,7 @@ const Screenshots = () => {
 
   return (
     <DashboardLayout>
+      <PageGuard permission="view_screenshots">
       <div className="space-y-6">
         {/* Header */}
         <div>
@@ -168,6 +170,7 @@ const Screenshots = () => {
           </div>
         )}
       </div>
+      </PageGuard>
     </DashboardLayout>
   );
 };

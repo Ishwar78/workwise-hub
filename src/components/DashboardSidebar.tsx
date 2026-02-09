@@ -7,25 +7,41 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NotificationBell, NotificationDropdown, useNotifications } from "@/components/NotificationCenter";
+import { Permission } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useAuth } from "@/contexts/AuthContext";
+import { ROLE_LABELS } from "@/lib/permissions";
+import RoleSwitcher from "@/components/RoleSwitcher";
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Users, label: "Team", path: "/dashboard/team" },
-  { icon: Clock, label: "Time Logs", path: "/dashboard/time" },
-  { icon: Camera, label: "Screenshots", path: "/dashboard/screenshots" },
-  { icon: Globe, label: "App & URL Usage", path: "/dashboard/usage" },
-  { icon: Activity, label: "Activity Feed", path: "/dashboard/activity" },
-  { icon: BarChart3, label: "Reports", path: "/dashboard/reports" },
-  { icon: UserPlus, label: "Invite Members", path: "/dashboard/invite" },
-  { icon: FileText, label: "API Spec", path: "/dashboard/api-spec" },
-  { icon: Bell, label: "Notifications", path: "/dashboard/notifications" },
-  { icon: CreditCard, label: "Billing", path: "/dashboard/billing" },
-  { icon: Settings, label: "Settings", path: "/dashboard/settings" },
+interface MenuItem {
+  icon: typeof LayoutDashboard;
+  label: string;
+  path: string;
+  permission: Permission;
+}
+
+const menuItems: MenuItem[] = [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", permission: "view_dashboard" },
+  { icon: Users, label: "Team", path: "/dashboard/team", permission: "view_team" },
+  { icon: Clock, label: "Time Logs", path: "/dashboard/time", permission: "view_time_logs" },
+  { icon: Camera, label: "Screenshots", path: "/dashboard/screenshots", permission: "view_screenshots" },
+  { icon: Globe, label: "App & URL Usage", path: "/dashboard/usage", permission: "view_app_usage" },
+  { icon: Activity, label: "Activity Feed", path: "/dashboard/activity", permission: "view_activity" },
+  { icon: BarChart3, label: "Reports", path: "/dashboard/reports", permission: "view_reports" },
+  { icon: UserPlus, label: "Invite Members", path: "/dashboard/invite", permission: "invite_members" },
+  { icon: FileText, label: "API Spec", path: "/dashboard/api-spec", permission: "view_api_spec" },
+  { icon: Bell, label: "Notifications", path: "/dashboard/notifications", permission: "view_notifications" },
+  { icon: CreditCard, label: "Billing", path: "/dashboard/billing", permission: "manage_billing" },
+  { icon: Settings, label: "Settings", path: "/dashboard/settings", permission: "manage_settings" },
 ];
 
 const DashboardSidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { can } = usePermissions();
+  const { user } = useAuth();
+
+  const visibleItems = menuItems.filter((item) => can(item.permission));
 
   return (
     <aside className={cn(
@@ -48,14 +64,14 @@ const DashboardSidebar = () => {
         <div className="px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Building2 size={14} className="text-primary" />
-            <span className="text-xs text-muted-foreground">Acme Corp</span>
+            <span className="text-xs text-muted-foreground">{user.companyName}</span>
           </div>
-          <span className="text-[10px] text-primary">Professional Plan</span>
+          <span className="text-[10px] text-primary">{ROLE_LABELS[user.role]}</span>
         </div>
       )}
 
       <nav className="flex-1 py-2 overflow-y-auto">
-        {menuItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <Link
@@ -72,6 +88,8 @@ const DashboardSidebar = () => {
           );
         })}
       </nav>
+
+      {!collapsed && <RoleSwitcher />}
 
       <div className="p-2 border-t border-border">
         <Link to="/" className="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary">
