@@ -18,6 +18,8 @@ import InviteMembers from "./pages/InviteMembers";
 import TeamManagement from "./pages/TeamManagement";
 import SettingsPage from "./pages/SettingsPage";
 import SuperAdmin from "./pages/SuperAdmin";
+import ActivityDashboard from "./pages/ActivityDashboard";
+import ApiSpecification from "./pages/ApiSpecification";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +45,8 @@ const App = () => (
           <Route path="/dashboard/reports" element={<Reports />} />
           <Route path="/dashboard/team" element={<TeamManagement />} />
           <Route path="/dashboard/settings" element={<SettingsPage />} />
+          <Route path="/dashboard/activity" element={<ActivityDashboard />} />
+          <Route path="/dashboard/api-spec" element={<ApiSpecification />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
           <Route path="/super-admin" element={<SuperAdmin />} />
           <Route path="/super-admin/*" element={<SuperAdmin />} />
