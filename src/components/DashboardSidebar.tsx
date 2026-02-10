@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Users, Clock, Camera, Globe, BarChart3,
   Settings, CreditCard, LogOut, ChevronLeft, UserPlus, Building2,
-  Activity, FileText, Bell, ShieldBan, Timer
+  Activity, FileText, Bell, ShieldBan, Timer, CalendarCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NotificationBell, NotificationDropdown, useNotifications } from "@/components/NotificationCenter";
@@ -33,6 +33,7 @@ const menuItems: MenuItem[] = [
   { icon: Bell, label: "Notifications", path: "/dashboard/notifications", permission: "view_notifications" },
   { icon: ShieldBan, label: "Restrictions", path: "/dashboard/restrictions", permission: "configure_monitoring" },
   { icon: Timer, label: "Justifications", path: "/dashboard/justifications", permission: "view_time_logs" },
+  { icon: CalendarCheck, label: "Attendance", path: "/dashboard/attendance", permission: "view_attendance" },
   { icon: CreditCard, label: "Billing", path: "/dashboard/billing", permission: "manage_billing" },
   { icon: Settings, label: "Settings", path: "/dashboard/settings", permission: "manage_settings" },
 ];
