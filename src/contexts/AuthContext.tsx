@@ -9,9 +9,10 @@ export interface MockUser {
   phoneVerified: boolean;
   role: AppRole;
   companyName: string;
-  companyId: number;
+  companyId: number | null;
   deviceId?: string;
   isTracking?: boolean;
+  status: "active" | "suspended";
 }
 
 export interface PendingInvite {
@@ -30,11 +31,15 @@ interface OtpState {
   expiresAt: number;
 }
 
+interface LoginOptions {
+  loginType: "super_admin" | "company_admin";
+}
+
 interface AuthContextValue {
   user: MockUser | null;
   isAuthenticated: boolean;
   invites: PendingInvite[];
-  login: (email: string, password: string) => { success: boolean; error?: string; redirectTo?: string; requiresOtp?: boolean };
+  login: (email: string, password: string, options: LoginOptions) => { success: boolean; error?: string; redirectTo?: string; requiresOtp?: boolean };
   logout: () => void;
   setRole: (role: AppRole) => void;
   acceptInvite: (token: string, name: string, password: string, phone: string) => { success: boolean; error?: string; requiresOtp?: boolean };
@@ -48,21 +53,37 @@ interface AuthContextValue {
 }
 
 const MOCK_CREDENTIALS: Record<string, { password: string; user: MockUser }> = {
+  "superadminmok@gmail.com": {
+    password: "mok@webteam",
+    user: {
+      id: "sa1", name: "Super Admin", email: "superadminmok@gmail.com",
+      phone: "+919876543200", phoneVerified: true,
+      role: "super_admin", companyName: "", companyId: null, status: "active",
+    },
+  },
   "alice@acme.com": {
     password: "admin123",
-    user: { id: "u1", name: "Alice Johnson", email: "alice@acme.com", phone: "+919876543210", phoneVerified: true, role: "company_admin", companyName: "Acme Corp", companyId: 1 },
+    user: {
+      id: "u1", name: "Alice Johnson", email: "alice@acme.com",
+      phone: "+919876543210", phoneVerified: true,
+      role: "company_admin", companyName: "Acme Corp", companyId: 1, status: "active",
+    },
   },
   "bob@acme.com": {
     password: "user123",
-    user: { id: "u2", name: "Bob Smith", email: "bob@acme.com", phone: "+919876543211", phoneVerified: true, role: "user", companyName: "Acme Corp", companyId: 1 },
+    user: {
+      id: "u2", name: "Bob Smith", email: "bob@acme.com",
+      phone: "+919876543211", phoneVerified: true,
+      role: "user", companyName: "Acme Corp", companyId: 1, status: "active",
+    },
   },
   "david@techflow.io": {
     password: "admin123",
-    user: { id: "u4", name: "David Lee", email: "david@techflow.io", phone: "+919876543212", phoneVerified: true, role: "company_admin", companyName: "TechFlow Inc", companyId: 2 },
-  },
-  "superadmin@webmok.com": {
-    password: "super123",
-    user: { id: "sa1", name: "Super Admin", email: "superadmin@webmok.com", phone: "+919876543200", phoneVerified: true, role: "company_admin", companyName: "WebMok", companyId: 0 },
+    user: {
+      id: "u4", name: "David Lee", email: "david@techflow.io",
+      phone: "+919876543212", phoneVerified: true,
+      role: "company_admin", companyName: "TechFlow Inc", companyId: 2, status: "active",
+    },
   },
 };
 
@@ -75,7 +96,7 @@ const DEFAULT_INVITES: PendingInvite[] = [
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<MockUser | null>(MOCK_CREDENTIALS["alice@acme.com"].user);
+  const [user, setUser] = useState<MockUser | null>(null);
   const [credentials, setCredentials] = useState(MOCK_CREDENTIALS);
   const [invites, setInvites] = useState<PendingInvite[]>(DEFAULT_INVITES);
   const [pendingOtp, setPendingOtp] = useState<OtpState | null>(null);
@@ -95,7 +116,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (pendingOtp.code !== code) return { success: false, error: "Invalid OTP. Please try again." };
     setPendingOtp(null);
 
-    // Mark phone as verified on pending user
     if (pendingUser) {
       const verifiedUser = { ...pendingUser, phoneVerified: true };
       setUser(verifiedUser);
@@ -108,26 +128,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setPendingAuth(null);
   }, []);
 
-  const login = useCallback((email: string, password: string) => {
+  const login = useCallback((email: string, password: string, options: LoginOptions) => {
     const cred = credentials[email.toLowerCase()];
     if (!cred) return { success: false, error: "No account found with this email." };
     if (cred.password !== password) return { success: false, error: "Incorrect password." };
 
+    const userRole = cred.user.role;
+
+    // Enforce login type isolation
+    if (options.loginType === "super_admin") {
+      if (userRole !== "super_admin") {
+        return { success: false, error: "This login is for Super Admins only. Use the Company Admin login instead." };
+      }
+    } else {
+      // company_admin login type — block super admins
+      if (userRole === "super_admin") {
+        return { success: false, error: "Super Admins cannot log in here. Use the Super Admin login portal." };
+      }
+      // Ensure company_id exists for company users
+      if (cred.user.companyId === null) {
+        return { success: false, error: "Account is not associated with any company." };
+      }
+    }
+
+    if (cred.user.status === "suspended") {
+      return { success: false, error: "Your account has been suspended. Contact your administrator." };
+    }
+
     const loggedInUser: MockUser = {
       ...cred.user,
       deviceId: `device_${Math.random().toString(36).slice(2, 8)}`,
-      isTracking: true,
+      isTracking: userRole !== "super_admin",
     };
 
-    const redirectTo = email === "superadmin@webmok.com" ? "/super-admin" : "/dashboard";
+    const redirectTo = userRole === "super_admin" ? "/super-admin" : "/dashboard";
 
-    // For demo: existing users already have phoneVerified=true, so skip OTP
     if (loggedInUser.phoneVerified) {
       setUser(loggedInUser);
       return { success: true, redirectTo };
     }
 
-    // Otherwise require OTP
     setPendingUser(loggedInUser);
     setPendingAuth({ type: "login", redirectTo });
     sendOtp(loggedInUser.phone);
@@ -162,6 +202,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       companyId: invite.companyId,
       deviceId: `device_${Math.random().toString(36).slice(2, 8)}`,
       isTracking: true,
+      status: "active",
     };
 
     setCredentials(prev => ({
@@ -171,7 +212,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setInvites(prev => prev.map(i => i.token === token ? { ...i, status: "accepted" as const } : i));
 
-    // Require OTP before completing
     setPendingUser(newUser);
     setPendingAuth({ type: "invite" });
     sendOtp(phone);
