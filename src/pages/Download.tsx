@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -99,7 +100,17 @@ const trackingFeatures = [
   { icon: HardDrive, label: "Offline Queueing", desc: "Data cached locally, synced when online" },
 ];
 
+const detectOS = (): string => {
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes("win")) return "Windows";
+  if (ua.includes("mac")) return "macOS";
+  if (ua.includes("linux")) return "Linux";
+  return "";
+};
+
 const DownloadPage = () => {
+  const detectedOS = useMemo(() => detectOS(), []);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -114,6 +125,11 @@ const DownloadPage = () => {
             <motion.p variants={fadeUp} custom={1} className="text-muted-foreground max-w-xl mx-auto">
               One universal installer for all companies. Your login credentials automatically configure company-specific rules and plan settings.
             </motion.p>
+            {detectedOS && (
+              <motion.p variants={fadeUp} custom={1.5} className="text-sm text-primary font-medium mt-2">
+                We detected you're using <strong>{detectedOS}</strong> — your recommended download is highlighted below.
+              </motion.p>
+            )}
             <motion.div variants={fadeUp} custom={2} className="flex flex-wrap justify-center gap-2 mt-4">
               <Badge variant="outline" className="gap-1"><Shield size={12} /> OS-Level APIs Only</Badge>
               <Badge variant="outline" className="gap-1"><Lock size={12} /> Encrypted Token Storage</Badge>
@@ -123,12 +139,18 @@ const DownloadPage = () => {
 
           {/* OS Cards */}
           <motion.div initial="hidden" animate="visible" className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {platforms.map((p, i) => (
+            {platforms.map((p, i) => {
+              const isDetected = p.name === detectedOS;
+              return (
               <motion.div
                 key={p.name}
                 variants={fadeUp}
                 custom={i}
-                className="rounded-xl bg-gradient-card border border-border p-6 hover:border-primary/30 hover:shadow-glow transition-all duration-300"
+                className={`rounded-xl bg-gradient-card border p-6 transition-all duration-300 ${
+                  isDetected
+                    ? "border-primary ring-2 ring-primary/20 shadow-glow scale-[1.02]"
+                    : "border-border hover:border-primary/30 hover:shadow-glow"
+                }`}
               >
                 <div className="text-center mb-4">
                   <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
@@ -157,7 +179,8 @@ const DownloadPage = () => {
                   </ol>
                 </div>
               </motion.div>
-            ))}
+              );
+            })}
           </motion.div>
         </div>
       </section>
