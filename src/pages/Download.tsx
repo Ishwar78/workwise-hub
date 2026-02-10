@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Monitor, Apple, Terminal, Download, Shield, Clock, Camera,
   Eye, RefreshCw, Lock, Wifi, WifiOff, MousePointer, AppWindow,
-  Globe, HardDrive, ChevronDown
+  Globe, HardDrive, ChevronDown, Cpu, MemoryStick, HardDriveDownload
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -23,6 +23,8 @@ const fadeUp = {
   }),
 };
 
+const DOWNLOAD_BASE = "https://releases.webmok.com/agent";
+
 const platforms = [
   {
     name: "Windows",
@@ -31,6 +33,8 @@ const platforms = [
     size: "45 MB",
     ext: ".exe",
     file: "webmok-agent-setup.exe",
+    downloadUrl: `${DOWNLOAD_BASE}/v2.1.0/webmok-agent-setup.exe`,
+    minOs: "Windows 10 (64-bit) or later",
     steps: [
       "Direct HTTPS download starts automatically",
       "Installer requests system permission",
@@ -47,6 +51,8 @@ const platforms = [
     size: "52 MB",
     ext: ".dmg",
     file: "webmok-agent.dmg",
+    downloadUrl: `${DOWNLOAD_BASE}/v2.1.0/webmok-agent.dmg`,
+    minOs: "macOS 12 Monterey or later",
     steps: [
       "Open the downloaded DMG file",
       "Drag WEBMOK Agent to Applications folder",
@@ -63,6 +69,8 @@ const platforms = [
     size: "48 MB",
     ext: ".AppImage",
     file: "webmok-agent.AppImage",
+    downloadUrl: `${DOWNLOAD_BASE}/v2.1.0/webmok-agent.AppImage`,
+    minOs: "Ubuntu 20.04+ / Fedora 36+ / Debian 11+",
     steps: [
       "Download the AppImage file",
       "Make it executable: chmod +x webmok-agent.AppImage",
@@ -72,6 +80,14 @@ const platforms = [
       "No installation required — portable executable",
     ],
   },
+];
+
+const systemRequirements = [
+  { icon: Cpu, label: "Processor", value: "Dual-core 1.5 GHz or faster (x64 / ARM64)" },
+  { icon: MemoryStick, label: "RAM", value: "2 GB minimum (4 GB recommended)" },
+  { icon: HardDriveDownload, label: "Disk Space", value: "200 MB free space" },
+  { icon: Globe, label: "Network", value: "Broadband internet (1 Mbps+)" },
+  { icon: Monitor, label: "Display", value: "1024×768 minimum resolution" },
 ];
 
 const trackingFeatures = [
@@ -123,8 +139,10 @@ const DownloadPage = () => {
                   <p className="text-xs text-muted-foreground font-mono">{p.file}</p>
                 </div>
 
-                <Button className="w-full gap-2 mb-4">
-                  <Download size={16} /> Download {p.ext}
+                <Button className="w-full gap-2 mb-4" asChild>
+                  <a href={p.downloadUrl} download={p.file}>
+                    <Download size={16} /> Download {p.ext}
+                  </a>
                 </Button>
 
                 <div className="border-t border-border pt-3">
@@ -268,6 +286,49 @@ const DownloadPage = () => {
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* System Requirements */}
+      <section className="py-16">
+        <div className="container mx-auto px-4 max-w-3xl">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }}>
+            <motion.h2 variants={fadeUp} custom={0} className="text-2xl md:text-3xl font-bold text-center mb-2">
+              System Requirements
+            </motion.h2>
+            <motion.p variants={fadeUp} custom={1} className="text-muted-foreground text-center mb-8">
+              Minimum specifications to run the WEBMOK Agent
+            </motion.p>
+
+            <motion.div variants={fadeUp} custom={2} className="grid sm:grid-cols-2 gap-4 mb-8">
+              {systemRequirements.map((r) => (
+                <div key={r.label} className="flex gap-3 items-start rounded-lg border border-border p-4 bg-gradient-card">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <r.icon size={18} className="text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{r.label}</p>
+                    <p className="text-xs text-muted-foreground">{r.value}</p>
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+
+            <motion.div variants={fadeUp} custom={3} className="rounded-xl border border-border bg-gradient-card p-5">
+              <p className="text-sm font-semibold text-foreground mb-3">Minimum OS Versions</p>
+              <div className="grid sm:grid-cols-3 gap-4">
+                {platforms.map((p) => (
+                  <div key={p.name} className="flex gap-2 items-start">
+                    <p.icon size={16} className="text-primary mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.minOs}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </motion.div>
           </motion.div>
         </div>
