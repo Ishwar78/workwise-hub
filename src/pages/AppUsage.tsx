@@ -1,33 +1,109 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Globe, Monitor, Calendar, User, ExternalLink } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import DashboardLayout from "@/components/DashboardLayout";
 import { PageGuard } from "@/components/RoleGuard";
 
-const mockUsers = ["All Users", "Alice Johnson", "Bob Smith", "Carol White", "David Lee", "Eva Brown"];
-
-const topApps = [
-  { name: "VS Code", hours: 42.5, users: 4, category: "Development" },
-  { name: "Chrome", hours: 38.2, users: 5, category: "Browser" },
-  { name: "Figma", hours: 22.8, users: 2, category: "Design" },
-  { name: "Slack", hours: 18.4, users: 5, category: "Communication" },
-  { name: "Terminal", hours: 15.6, users: 3, category: "Development" },
-  { name: "Notion", hours: 12.3, users: 3, category: "Productivity" },
-  { name: "Zoom", hours: 8.7, users: 4, category: "Communication" },
-  { name: "Jira", hours: 7.2, users: 2, category: "Project Mgmt" },
+const employees = [
+  { id: "all", name: "All Users" },
+  { id: "alice", name: "Alice Johnson" },
+  { id: "bob", name: "Bob Smith" },
+  { id: "carol", name: "Carol White" },
+  { id: "david", name: "David Lee" },
+  { id: "eva", name: "Eva Brown" },
 ];
 
-const topUrls = [
-  { url: "github.com", hours: 14.2, visits: 342, category: "Development" },
-  { url: "stackoverflow.com", hours: 8.5, visits: 186, category: "Development" },
-  { url: "docs.google.com", hours: 6.8, visits: 94, category: "Productivity" },
-  { url: "figma.com", hours: 5.4, visits: 67, category: "Design" },
-  { url: "slack.com", hours: 4.9, visits: 210, category: "Communication" },
-  { url: "notion.so", hours: 4.1, visits: 85, category: "Productivity" },
-  { url: "youtube.com", hours: 3.2, visits: 48, category: "Entertainment" },
-  { url: "reddit.com", hours: 2.1, visits: 62, category: "Social" },
-];
+type AppEntry = { name: string; hours: number; users: number; category: string };
+type UrlEntry = { url: string; hours: number; visits: number; category: string };
+
+const perEmployeeApps: Record<string, AppEntry[]> = {
+  alice: [
+    { name: "VS Code", hours: 6.2, users: 1, category: "Development" },
+    { name: "Chrome", hours: 4.1, users: 1, category: "Browser" },
+    { name: "Terminal", hours: 3.8, users: 1, category: "Development" },
+    { name: "Slack", hours: 2.5, users: 1, category: "Communication" },
+    { name: "Notion", hours: 1.4, users: 1, category: "Productivity" },
+    { name: "Zoom", hours: 0.8, users: 1, category: "Communication" },
+  ],
+  bob: [
+    { name: "Figma", hours: 7.1, users: 1, category: "Design" },
+    { name: "Chrome", hours: 5.3, users: 1, category: "Browser" },
+    { name: "Slack", hours: 3.2, users: 1, category: "Communication" },
+    { name: "Notion", hours: 2.6, users: 1, category: "Productivity" },
+    { name: "Zoom", hours: 2.1, users: 1, category: "Communication" },
+    { name: "Jira", hours: 1.5, users: 1, category: "Project Mgmt" },
+  ],
+  carol: [
+    { name: "VS Code", hours: 5.8, users: 1, category: "Development" },
+    { name: "Chrome", hours: 4.7, users: 1, category: "Browser" },
+    { name: "Jira", hours: 3.2, users: 1, category: "Project Mgmt" },
+    { name: "Slack", hours: 2.9, users: 1, category: "Communication" },
+    { name: "Terminal", hours: 2.4, users: 1, category: "Development" },
+    { name: "Zoom", hours: 1.3, users: 1, category: "Communication" },
+  ],
+  david: [
+    { name: "Chrome", hours: 6.5, users: 1, category: "Browser" },
+    { name: "Slack", hours: 4.8, users: 1, category: "Communication" },
+    { name: "Notion", hours: 3.9, users: 1, category: "Productivity" },
+    { name: "Zoom", hours: 2.7, users: 1, category: "Communication" },
+    { name: "VS Code", hours: 1.9, users: 1, category: "Development" },
+    { name: "Figma", hours: 1.2, users: 1, category: "Design" },
+  ],
+  eva: [
+    { name: "Figma", hours: 6.4, users: 1, category: "Design" },
+    { name: "Chrome", hours: 5.1, users: 1, category: "Browser" },
+    { name: "Slack", hours: 3.7, users: 1, category: "Communication" },
+    { name: "VS Code", hours: 2.3, users: 1, category: "Development" },
+    { name: "Notion", hours: 1.8, users: 1, category: "Productivity" },
+    { name: "Jira", hours: 1.1, users: 1, category: "Project Mgmt" },
+  ],
+};
+
+const perEmployeeUrls: Record<string, UrlEntry[]> = {
+  alice: [
+    { url: "github.com", hours: 4.5, visits: 112, category: "Development" },
+    { url: "stackoverflow.com", hours: 2.8, visits: 64, category: "Development" },
+    { url: "docs.google.com", hours: 1.5, visits: 22, category: "Productivity" },
+    { url: "slack.com", hours: 1.2, visits: 48, category: "Communication" },
+    { url: "notion.so", hours: 0.9, visits: 18, category: "Productivity" },
+    { url: "youtube.com", hours: 0.4, visits: 8, category: "Entertainment" },
+  ],
+  bob: [
+    { url: "figma.com", hours: 3.8, visits: 42, category: "Design" },
+    { url: "dribbble.com", hours: 2.1, visits: 34, category: "Design" },
+    { url: "slack.com", hours: 1.8, visits: 56, category: "Communication" },
+    { url: "docs.google.com", hours: 1.4, visits: 19, category: "Productivity" },
+    { url: "notion.so", hours: 1.1, visits: 22, category: "Productivity" },
+    { url: "youtube.com", hours: 0.9, visits: 14, category: "Entertainment" },
+  ],
+  carol: [
+    { url: "github.com", hours: 3.9, visits: 87, category: "Development" },
+    { url: "stackoverflow.com", hours: 2.4, visits: 52, category: "Development" },
+    { url: "jira.atlassian.com", hours: 1.9, visits: 38, category: "Project Mgmt" },
+    { url: "slack.com", hours: 1.3, visits: 44, category: "Communication" },
+    { url: "docs.google.com", hours: 0.8, visits: 12, category: "Productivity" },
+    { url: "reddit.com", hours: 0.5, visits: 16, category: "Social" },
+  ],
+  david: [
+    { url: "docs.google.com", hours: 3.2, visits: 41, category: "Productivity" },
+    { url: "notion.so", hours: 2.6, visits: 35, category: "Productivity" },
+    { url: "slack.com", hours: 2.1, visits: 62, category: "Communication" },
+    { url: "youtube.com", hours: 1.4, visits: 22, category: "Entertainment" },
+    { url: "github.com", hours: 1.1, visits: 28, category: "Development" },
+    { url: "reddit.com", hours: 0.8, visits: 26, category: "Social" },
+  ],
+  eva: [
+    { url: "figma.com", hours: 3.4, visits: 38, category: "Design" },
+    { url: "github.com", hours: 2.7, visits: 54, category: "Development" },
+    { url: "slack.com", hours: 1.9, visits: 50, category: "Communication" },
+    { url: "stackoverflow.com", hours: 1.5, visits: 32, category: "Development" },
+    { url: "notion.so", hours: 1.0, visits: 15, category: "Productivity" },
+    { url: "youtube.com", hours: 0.6, visits: 10, category: "Entertainment" },
+  ],
+};
+
+const periodMultiplier: Record<string, number> = { today: 1, week: 5.2, month: 22 };
 
 const categoryColors: Record<string, string> = {
   Development: "bg-primary/20 text-primary",
@@ -40,12 +116,60 @@ const categoryColors: Record<string, string> = {
   Social: "bg-orange-500/20 text-orange-400",
 };
 
-const maxAppHours = Math.max(...topApps.map(a => a.hours));
-const maxUrlHours = Math.max(...topUrls.map(u => u.hours));
-
 const AppUsage = () => {
-  const [selectedUser, setSelectedUser] = useState("All Users");
+  const [selectedUser, setSelectedUser] = useState("all");
   const [period, setPeriod] = useState("today");
+
+  const { apps, urls } = useMemo(() => {
+    const mult = periodMultiplier[period] || 1;
+
+    if (selectedUser === "all") {
+      // Aggregate all employees
+      const appMap: Record<string, AppEntry> = {};
+      const urlMap: Record<string, UrlEntry> = {};
+      Object.values(perEmployeeApps).forEach(list =>
+        list.forEach(a => {
+          if (appMap[a.name]) {
+            appMap[a.name].hours += a.hours;
+            appMap[a.name].users += 1;
+          } else {
+            appMap[a.name] = { ...a, users: 1 };
+          }
+        })
+      );
+      Object.values(perEmployeeUrls).forEach(list =>
+        list.forEach(u => {
+          if (urlMap[u.url]) {
+            urlMap[u.url].hours += u.hours;
+            urlMap[u.url].visits += u.visits;
+          } else {
+            urlMap[u.url] = { ...u };
+          }
+        })
+      );
+      return {
+        apps: Object.values(appMap)
+          .map(a => ({ ...a, hours: +(a.hours * mult).toFixed(1) }))
+          .sort((a, b) => b.hours - a.hours),
+        urls: Object.values(urlMap)
+          .map(u => ({ ...u, hours: +(u.hours * mult).toFixed(1), visits: Math.round(u.visits * mult) }))
+          .sort((a, b) => b.hours - a.hours),
+      };
+    }
+
+    const empApps = perEmployeeApps[selectedUser] || [];
+    const empUrls = perEmployeeUrls[selectedUser] || [];
+    return {
+      apps: empApps.map(a => ({ ...a, hours: +(a.hours * mult).toFixed(1) })),
+      urls: empUrls.map(u => ({ ...u, hours: +(u.hours * mult).toFixed(1), visits: Math.round(u.visits * mult) })),
+    };
+  }, [selectedUser, period]);
+
+  const maxAppHours = Math.max(...apps.map(a => a.hours), 1);
+  const maxUrlHours = Math.max(...urls.map(u => u.hours), 1);
+
+  const periodLabel = period === "today" ? "Today" : period === "week" ? "This Week" : "This Month";
+  const userName = employees.find(e => e.id === selectedUser)?.name || "All Users";
 
   return (
     <DashboardLayout>
@@ -65,7 +189,7 @@ const AppUsage = () => {
             <Select value={selectedUser} onValueChange={setSelectedUser}>
               <SelectTrigger className="w-[180px] h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {mockUsers.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -80,11 +204,17 @@ const AppUsage = () => {
               </SelectContent>
             </Select>
           </div>
+          {selectedUser !== "all" && (
+            <span className="ml-auto text-xs text-muted-foreground">
+              Showing data for <span className="text-primary font-medium">{userName}</span> · {periodLabel}
+            </span>
+          )}
         </div>
 
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Top Applications */}
           <motion.div
+            key={`apps-${selectedUser}-${period}`}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="rounded-xl bg-gradient-card border border-border"
@@ -94,7 +224,7 @@ const AppUsage = () => {
               <h2 className="font-semibold text-foreground text-sm">Top Applications</h2>
             </div>
             <div className="p-4 space-y-3">
-              {topApps.map((app, i) => (
+              {apps.map((app, i) => (
                 <motion.div
                   key={app.name}
                   initial={{ opacity: 0, x: -10 }}
@@ -111,7 +241,9 @@ const AppUsage = () => {
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-semibold text-foreground">{app.hours}h</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">{app.users} users</span>
+                      <span className="text-[10px] text-muted-foreground ml-2">
+                        {selectedUser === "all" ? `${app.users} users` : ""}
+                      </span>
                     </div>
                   </div>
                   <div className="h-2 bg-card rounded-full overflow-hidden border border-border">
@@ -124,11 +256,15 @@ const AppUsage = () => {
                   </div>
                 </motion.div>
               ))}
+              {apps.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No data available</p>
+              )}
             </div>
           </motion.div>
 
           {/* Top Websites */}
           <motion.div
+            key={`urls-${selectedUser}-${period}`}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -139,7 +275,7 @@ const AppUsage = () => {
               <h2 className="font-semibold text-foreground text-sm">Top Websites</h2>
             </div>
             <div className="p-4 space-y-3">
-              {topUrls.map((site, i) => (
+              {urls.map((site, i) => (
                 <motion.div
                   key={site.url}
                   initial={{ opacity: 0, x: -10 }}
@@ -171,12 +307,16 @@ const AppUsage = () => {
                   </div>
                 </motion.div>
               ))}
+              {urls.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No data available</p>
+              )}
             </div>
           </motion.div>
         </div>
 
         {/* Category Breakdown */}
         <motion.div
+          key={`cats-${selectedUser}-${period}`}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -185,7 +325,7 @@ const AppUsage = () => {
           <h2 className="font-semibold text-foreground text-sm mb-4">Time by Category</h2>
           <div className="flex flex-wrap gap-3">
             {Object.entries(
-              [...topApps, ...topUrls].reduce<Record<string, number>>((acc, item) => {
+              [...apps, ...urls].reduce<Record<string, number>>((acc, item) => {
                 acc[item.category] = (acc[item.category] || 0) + item.hours;
                 return acc;
               }, {})
