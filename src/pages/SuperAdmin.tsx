@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { usePlatform, Plan, Company } from "@/contexts/PlatformContext";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend,
@@ -92,17 +93,6 @@ const revenueStats = [
   { label: "Churn Rate", value: "2.1%", change: "-0.3%", icon: Activity, up: false },
 ];
 
-const companies = [
-  { id: 1, name: "Acme Corp", plan: "Professional", users: 18, maxUsers: 25, status: "active", mrr: 99, joined: "2025-11-12", email: "admin@acme.com", country: "US" },
-  { id: 2, name: "TechFlow Inc", plan: "Team", users: 42, maxUsers: 50, status: "active", mrr: 199, joined: "2025-09-05", email: "ceo@techflow.io", country: "UK" },
-  { id: 3, name: "StartupXYZ", plan: "Starter", users: 8, maxUsers: 10, status: "active", mrr: 49, joined: "2026-01-20", email: "hello@startupxyz.com", country: "IN" },
-  { id: 4, name: "BigCo Ltd", plan: "Enterprise", users: 156, maxUsers: 200, status: "active", mrr: 499, joined: "2025-06-14", email: "ops@bigco.com", country: "DE" },
-  { id: 5, name: "FreeTest", plan: "Free Trial", users: 3, maxUsers: 5, status: "trial", mrr: 0, joined: "2026-02-01", email: "test@free.com", country: "US" },
-  { id: 6, name: "OldCompany", plan: "Starter", users: 5, maxUsers: 10, status: "suspended", mrr: 0, joined: "2025-03-10", email: "old@company.com", country: "CA" },
-  { id: 7, name: "DesignHub", plan: "Professional", users: 22, maxUsers: 25, status: "active", mrr: 99, joined: "2025-08-22", email: "team@designhub.co", country: "AU" },
-  { id: 8, name: "DevShop", plan: "Team", users: 38, maxUsers: 50, status: "active", mrr: 199, joined: "2025-10-01", email: "hello@devshop.dev", country: "US" },
-];
-
 const allUsers = [
   { id: "u1", name: "Alice Johnson", email: "alice@acme.com", company: "Acme Corp", role: "company_admin", status: "active", lastSeen: "2 min ago" },
   { id: "u2", name: "Bob Smith", email: "bob@acme.com", company: "Acme Corp", role: "user", status: "active", lastSeen: "5 min ago" },
@@ -116,14 +106,6 @@ const allUsers = [
   { id: "u10", name: "Jack Wilson", email: "jack@devshop.dev", company: "DevShop", role: "user", status: "active", lastSeen: "1 min ago" },
   { id: "u11", name: "Karen Lopez", email: "karen@devshop.dev", company: "DevShop", role: "sub_admin", status: "active", lastSeen: "45 min ago" },
   { id: "u12", name: "Leo Martinez", email: "leo@free.com", company: "FreeTest", role: "company_admin", status: "active", lastSeen: "1 hr ago" },
-];
-
-const plans = [
-  { id: "free_trial", name: "Free Trial", price: 0, users: 5, screenshots: "12/hr", retention: "1 Month", active: 12 },
-  { id: "starter", name: "Starter", price: 49, users: 10, screenshots: "12/hr", retention: "3 Months", active: 34 },
-  { id: "professional", name: "Professional", price: 99, users: 25, screenshots: "12/hr", retention: "3 Months", active: 52 },
-  { id: "team", name: "Team", price: 199, users: 50, screenshots: "12/hr", retention: "6 Months", active: 24 },
-  { id: "enterprise", name: "Enterprise", price: 499, users: 200, screenshots: "Custom", retention: "1 Year", active: 5 },
 ];
 
 const subscriptions = [
@@ -192,126 +174,124 @@ const roleBadgeVariant = (role: string) => {
 };
 
 // ─── Overview Tab ───
-const OverviewTab = () => (
-  <div className="space-y-6">
-    <div>
-      <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-        <ShieldCheck size={22} className="text-primary" /> Super Admin Dashboard
-      </h1>
-      <p className="text-sm text-muted-foreground">Platform-wide overview and revenue</p>
-    </div>
-
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {revenueStats.map((stat, i) => (
-        <motion.div
-          key={stat.label}
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.05 }}
-          className="rounded-xl bg-gradient-card border border-border p-4"
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-muted-foreground">{stat.label}</span>
-            <stat.icon size={16} className="text-primary" />
-          </div>
-          <div className="text-2xl font-bold text-foreground">{stat.value}</div>
-          <div className={`text-xs flex items-center gap-1 mt-1 ${stat.up ? "text-status-active" : "text-status-idle"}`}>
-            {stat.up ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {stat.change}
-          </div>
-        </motion.div>
-      ))}
-    </div>
-
-    {/* Revenue Chart */}
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.2 }}
-      className="rounded-xl bg-gradient-card border border-border p-5"
-    >
-      <h2 className="font-semibold text-foreground mb-4">Monthly Recurring Revenue</h2>
-      <ResponsiveContainer width="100%" height={260}>
-        <AreaChart data={monthlyRevenue}>
-          <defs>
-            <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="hsl(192, 91%, 54%)" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="hsl(192, 91%, 54%)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 30%, 16%)" />
-          <XAxis dataKey="month" tick={{ fill: "hsl(215, 20%, 55%)", fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "hsl(215, 20%, 55%)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-          <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "MRR"]} />
-          <Area type="monotone" dataKey="revenue" stroke="hsl(192, 91%, 54%)" fill="url(#revenueGrad)" strokeWidth={2} />
-        </AreaChart>
-      </ResponsiveContainer>
-    </motion.div>
-
-    {/* Quick Stats Row */}
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* Recent Companies */}
-      <div className="rounded-xl bg-gradient-card border border-border p-4">
-        <h3 className="text-sm font-medium text-foreground mb-3">Recent Companies</h3>
-        <div className="space-y-2">
-          {companies.slice(0, 5).map(c => (
-            <div key={c.id} className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-secondary flex items-center justify-center text-[10px] font-bold text-foreground">
-                  {c.name[0]}
-                </div>
-                <span className="text-foreground">{c.name}</span>
-              </div>
-              <Badge variant="outline" className="text-[10px]">{c.plan}</Badge>
-            </div>
-          ))}
-        </div>
+const OverviewTab = () => {
+  const { companies } = usePlatform();
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <ShieldCheck size={22} className="text-primary" /> Super Admin Dashboard
+        </h1>
+        <p className="text-sm text-muted-foreground">Platform-wide overview and revenue</p>
       </div>
 
-      {/* Plan Distribution */}
-      <div className="rounded-xl bg-gradient-card border border-border p-4">
-        <h3 className="text-sm font-medium text-foreground mb-3">Plan Distribution</h3>
-        <ResponsiveContainer width="100%" height={160}>
-          <PieChart>
-            <Pie data={planDistribution} innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value" stroke="none">
-              {planDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-            </Pie>
-            <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: "10px", color: "hsl(215, 20%, 55%)" }} />
-          </PieChart>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {revenueStats.map((stat, i) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.05 }}
+            className="rounded-xl bg-gradient-card border border-border p-4"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">{stat.label}</span>
+              <stat.icon size={16} className="text-primary" />
+            </div>
+            <div className="text-2xl font-bold text-foreground">{stat.value}</div>
+            <div className={`text-xs flex items-center gap-1 mt-1 ${stat.up ? "text-status-active" : "text-status-idle"}`}>
+              {stat.up ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {stat.change}
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="rounded-xl bg-gradient-card border border-border p-5">
+        <h2 className="font-semibold text-foreground mb-4">Monthly Recurring Revenue</h2>
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={monthlyRevenue}>
+            <defs>
+              <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="hsl(192, 91%, 54%)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="hsl(192, 91%, 54%)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 30%, 16%)" />
+            <XAxis dataKey="month" tick={{ fill: "hsl(215, 20%, 55%)", fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "hsl(215, 20%, 55%)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`$${value.toLocaleString()}`, "MRR"]} />
+            <Area type="monotone" dataKey="revenue" stroke="hsl(192, 91%, 54%)" fill="url(#revenueGrad)" strokeWidth={2} />
+          </AreaChart>
         </ResponsiveContainer>
-      </div>
+      </motion.div>
 
-      {/* Platform Health */}
-      <div className="rounded-xl bg-gradient-card border border-border p-4">
-        <h3 className="text-sm font-medium text-foreground mb-3">Platform Health</h3>
-        <div className="space-y-3">
-          {[
-            { label: "API Uptime", value: "99.97%", pct: 99.97 },
-            { label: "Avg Response Time", value: "142ms", pct: 86 },
-            { label: "Active Agents", value: "2,841", pct: 74 },
-            { label: "Storage Used", value: "1.2 TB / 5 TB", pct: 24 },
-          ].map((h, i) => (
-            <div key={i}>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-muted-foreground">{h.label}</span>
-                <span className="text-foreground">{h.value}</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="rounded-xl bg-gradient-card border border-border p-4">
+          <h3 className="text-sm font-medium text-foreground mb-3">Recent Companies</h3>
+          <div className="space-y-2">
+            {companies.slice(0, 5).map(c => (
+              <div key={c.id} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded bg-secondary flex items-center justify-center text-[10px] font-bold text-foreground">
+                    {c.name[0]}
+                  </div>
+                  <span className="text-foreground">{c.name}</span>
+                </div>
+                <Badge variant="outline" className="text-[10px]">{c.plan}</Badge>
               </div>
-              <Progress value={h.pct} className="h-1.5" />
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-gradient-card border border-border p-4">
+          <h3 className="text-sm font-medium text-foreground mb-3">Plan Distribution</h3>
+          <ResponsiveContainer width="100%" height={160}>
+            <PieChart>
+              <Pie data={planDistribution} innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value" stroke="none">
+                {planDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+              </Pie>
+              <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: "10px", color: "hsl(215, 20%, 55%)" }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="rounded-xl bg-gradient-card border border-border p-4">
+          <h3 className="text-sm font-medium text-foreground mb-3">Platform Health</h3>
+          <div className="space-y-3">
+            {[
+              { label: "API Uptime", value: "99.97%", pct: 99.97 },
+              { label: "Avg Response Time", value: "142ms", pct: 86 },
+              { label: "Active Agents", value: "2,841", pct: 74 },
+              { label: "Storage Used", value: "1.2 TB / 5 TB", pct: 24 },
+            ].map((h, i) => (
+              <div key={i}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-muted-foreground">{h.label}</span>
+                  <span className="text-foreground">{h.value}</span>
+                </div>
+                <Progress value={h.pct} className="h-1.5" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Companies Tab ───
 const CompaniesTab = () => {
   const { toast } = useToast();
+  const { companies, plans, addCompany, suspendCompany, activateCompany, updateCompany } = usePlatform();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedCompany, setSelectedCompany] = useState<typeof companies[0] | null>(null);
-  const [planDialog, setPlanDialog] = useState<typeof companies[0] | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [planDialog, setPlanDialog] = useState<Company | null>(null);
   const [newPlan, setNewPlan] = useState("");
+  const [addDialog, setAddDialog] = useState(false);
+  const [newCompany, setNewCompany] = useState({
+    name: "", email: "", password: "", plan: "", country: "",
+  });
 
   const filtered = companies.filter(c => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase());
@@ -320,8 +300,47 @@ const CompaniesTab = () => {
   });
 
   const handlePlanAssign = () => {
-    toast({ title: "Plan Updated", description: `${planDialog?.name} moved to ${newPlan}` });
+    if (planDialog) {
+      const plan = plans.find(p => p.name === newPlan);
+      updateCompany(planDialog.id, {
+        plan: newPlan,
+        maxUsers: typeof plan?.users === "number" ? plan.users : planDialog.maxUsers,
+        mrr: plan?.price ?? planDialog.mrr,
+      });
+      toast({ title: "Plan Updated", description: `${planDialog.name} moved to ${newPlan}` });
+    }
     setPlanDialog(null);
+  };
+
+  const handleAddCompany = () => {
+    if (!newCompany.name || !newCompany.email || !newCompany.plan) {
+      toast({ title: "Missing Fields", description: "Please fill all required fields", variant: "destructive" });
+      return;
+    }
+    const plan = plans.find(p => p.name === newCompany.plan);
+    addCompany({
+      name: newCompany.name,
+      email: newCompany.email,
+      plan: newCompany.plan,
+      maxUsers: typeof plan?.users === "number" ? plan.users : 10,
+      status: newCompany.plan === "Free Trial" ? "trial" : "active",
+      mrr: plan?.price ?? 0,
+      country: newCompany.country || "US",
+      adminPassword: newCompany.password,
+    });
+    toast({ title: "Company Created", description: `${newCompany.name} has been added with ${newCompany.plan} plan. Login credentials sent to ${newCompany.email}.` });
+    setAddDialog(false);
+    setNewCompany({ name: "", email: "", password: "", plan: "", country: "" });
+  };
+
+  const handleSuspendToggle = (c: Company) => {
+    if (c.status === "suspended") {
+      activateCompany(c.id);
+      toast({ title: "Company Activated", description: `${c.name} is now active` });
+    } else {
+      suspendCompany(c.id);
+      toast({ title: "Company Suspended", description: `${c.name} has been suspended`, variant: "destructive" });
+    }
   };
 
   return (
@@ -331,7 +350,7 @@ const CompaniesTab = () => {
           <h1 className="text-2xl font-bold text-foreground">Companies</h1>
           <p className="text-sm text-muted-foreground">{companies.length} registered companies</p>
         </div>
-        <Button size="sm" className="gap-1"><Plus size={14} /> Add Company</Button>
+        <Button size="sm" className="gap-1" onClick={() => setAddDialog(true)}><Plus size={14} /> Add Company</Button>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -402,7 +421,7 @@ const CompaniesTab = () => {
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setPlanDialog(c); setNewPlan(c.plan); }} title="Change Plan">
                         <ArrowUpDown size={14} />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Suspend">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleSuspendToggle(c)} title={c.status === "suspended" ? "Activate" : "Suspend"}>
                         <Ban size={14} />
                       </Button>
                     </div>
@@ -472,6 +491,52 @@ const CompaniesTab = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setPlanDialog(null)}>Cancel</Button>
             <Button onClick={handlePlanAssign}>Assign Plan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Company Dialog */}
+      <Dialog open={addDialog} onOpenChange={setAddDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 size={18} className="text-primary" /> Add New Company
+            </DialogTitle>
+            <DialogDescription>Create a new company and assign admin credentials</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Company Name <span className="text-destructive">*</span></Label>
+              <Input placeholder="e.g. Acme Corp" className="mt-1" value={newCompany.name} onChange={e => setNewCompany(p => ({ ...p, name: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Company Admin Email <span className="text-destructive">*</span></Label>
+              <Input type="email" placeholder="admin@company.com" className="mt-1" value={newCompany.email} onChange={e => setNewCompany(p => ({ ...p, email: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Temporary Password</Label>
+              <Input type="password" placeholder="Auto-generated if empty" className="mt-1" value={newCompany.password} onChange={e => setNewCompany(p => ({ ...p, password: e.target.value }))} />
+              <p className="text-[10px] text-muted-foreground mt-1">Leave empty to auto-generate. Credentials will be emailed to admin.</p>
+            </div>
+            <div>
+              <Label>Select Plan <span className="text-destructive">*</span></Label>
+              <Select value={newCompany.plan} onValueChange={v => setNewCompany(p => ({ ...p, plan: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Choose plan" /></SelectTrigger>
+                <SelectContent>
+                  {plans.map(p => (
+                    <SelectItem key={p.id} value={p.name}>{p.name} — {p.price === 0 ? "Free" : `$${p.price}/mo`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Country</Label>
+              <Input placeholder="e.g. US, IN, UK" className="mt-1" value={newCompany.country} onChange={e => setNewCompany(p => ({ ...p, country: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialog(false)}>Cancel</Button>
+            <Button onClick={handleAddCompany}>Create Company</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -600,7 +665,6 @@ const UsersTab = () => {
         </div>
       </div>
 
-      {/* Role Change Dialog */}
       <Dialog open={!!roleDialog} onOpenChange={() => setRoleDialog(null)}>
         <DialogContent>
           <DialogHeader>
@@ -622,7 +686,6 @@ const UsersTab = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Remove Dialog */}
       <Dialog open={!!removeDialog} onOpenChange={() => setRemoveDialog(null)}>
         <DialogContent>
           <DialogHeader>
@@ -643,8 +706,107 @@ const UsersTab = () => {
 
 // ─── Plans Tab ───
 const PlansTab = () => {
-  const [editDialog, setEditDialog] = useState<typeof plans[0] | null>(null);
+  const { plans, addPlan, updatePlan, deletePlan } = usePlatform();
   const { toast } = useToast();
+  const [editDialog, setEditDialog] = useState<Plan | null>(null);
+  const [createDialog, setCreateDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<Plan | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", price: 0, users: "", screenshots: "", retention: "", popular: false, features: "" });
+  const [createForm, setCreateForm] = useState({ name: "", price: 0, users: "", screenshots: "12/hr", retention: "1 Month", popular: false, features: "" });
+
+  const openEdit = (p: Plan) => {
+    setEditForm({
+      name: p.name,
+      price: p.price,
+      users: String(p.users),
+      screenshots: p.screenshots,
+      retention: p.retention,
+      popular: p.popular ?? false,
+      features: (p.features ?? []).join("\n"),
+    });
+    setEditDialog(p);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editDialog) return;
+    updatePlan(editDialog.id, {
+      name: editForm.name,
+      price: editForm.price,
+      users: isNaN(Number(editForm.users)) ? editForm.users : Number(editForm.users),
+      screenshots: editForm.screenshots,
+      retention: editForm.retention,
+      popular: editForm.popular,
+      features: editForm.features.split("\n").filter(Boolean),
+    });
+    toast({ title: "Plan Updated", description: `${editForm.name} has been updated. Changes are reflected on the Pricing page.` });
+    setEditDialog(null);
+  };
+
+  const handleCreate = () => {
+    if (!createForm.name) {
+      toast({ title: "Plan name required", variant: "destructive" });
+      return;
+    }
+    addPlan({
+      name: createForm.name,
+      price: createForm.price,
+      users: isNaN(Number(createForm.users)) ? createForm.users : Number(createForm.users),
+      screenshots: createForm.screenshots,
+      retention: createForm.retention,
+      popular: createForm.popular,
+      features: createForm.features.split("\n").filter(Boolean),
+    });
+    toast({ title: "Plan Created", description: `${createForm.name} is now available on the Pricing page.` });
+    setCreateDialog(false);
+    setCreateForm({ name: "", price: 0, users: "", screenshots: "12/hr", retention: "1 Month", popular: false, features: "" });
+  };
+
+  const handleDelete = () => {
+    if (!deleteDialog) return;
+    deletePlan(deleteDialog.id);
+    toast({ title: "Plan Deleted", description: `${deleteDialog.name} has been removed`, variant: "destructive" });
+    setDeleteDialog(null);
+  };
+
+  const renderPlanForm = (form: typeof editForm, setForm: (f: typeof editForm) => void) => (
+    <div className="space-y-3">
+      <div>
+        <Label>Plan Name</Label>
+        <Input className="mt-1" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+      </div>
+      <div>
+        <Label>Price ($/month)</Label>
+        <Input type="number" className="mt-1" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} />
+      </div>
+      <div>
+        <Label>Max Users</Label>
+        <Input className="mt-1" value={form.users} onChange={e => setForm({ ...form, users: e.target.value })} placeholder="e.g. 25 or Custom" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Screenshot Frequency</Label>
+          <Input className="mt-1" value={form.screenshots} onChange={e => setForm({ ...form, screenshots: e.target.value })} />
+        </div>
+        <div>
+          <Label>Data Retention</Label>
+          <Input className="mt-1" value={form.retention} onChange={e => setForm({ ...form, retention: e.target.value })} />
+        </div>
+      </div>
+      <div>
+        <Label>Features (one per line)</Label>
+        <textarea
+          className="mt-1 w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm min-h-[100px] focus:outline-none focus:ring-2 focus:ring-primary"
+          value={form.features}
+          onChange={e => setForm({ ...form, features: e.target.value })}
+          placeholder="12 screenshots/hr&#10;Time tracking&#10;Full reports"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <Switch checked={form.popular} onCheckedChange={v => setForm({ ...form, popular: v })} />
+        <Label>Mark as Most Popular</Label>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -653,7 +815,7 @@ const PlansTab = () => {
           <h1 className="text-2xl font-bold text-foreground">Plans</h1>
           <p className="text-sm text-muted-foreground">Manage pricing plans and limits</p>
         </div>
-        <Button size="sm" className="gap-1"><Plus size={14} /> Create Plan</Button>
+        <Button size="sm" className="gap-1" onClick={() => setCreateDialog(true)}><Plus size={14} /> Create Plan</Button>
       </div>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {plans.map((p, i) => (
@@ -677,11 +839,14 @@ const PlansTab = () => {
               <div className="flex justify-between"><span>Screenshots</span><span className="text-foreground">{p.screenshots}</span></div>
               <div className="flex justify-between"><span>Data Retention</span><span className="text-foreground">{p.retention}</span></div>
             </div>
+            {p.popular && (
+              <Badge className="mt-3 text-[10px]">Most Popular</Badge>
+            )}
             <div className="flex gap-2 mt-4">
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => setEditDialog(p)}>
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(p)}>
                 <Edit2 size={12} className="mr-1" /> Edit
               </Button>
-              <Button variant="ghost" size="sm" className="text-destructive">
+              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeleteDialog(p)}>
                 <Trash2 size={12} />
               </Button>
             </div>
@@ -689,35 +854,48 @@ const PlansTab = () => {
         ))}
       </div>
 
+      {/* Edit Plan Dialog */}
       <Dialog open={!!editDialog} onOpenChange={() => setEditDialog(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Plan — {editDialog?.name}</DialogTitle>
-            <DialogDescription>Modify plan limits and pricing</DialogDescription>
+            <DialogDescription>Modify plan limits, pricing, and features. Changes will reflect on the public Pricing page.</DialogDescription>
           </DialogHeader>
-          {editDialog && (
-            <div className="space-y-3">
-              <div>
-                <Label>Price ($/month)</Label>
-                <Input type="number" defaultValue={editDialog.price} className="mt-1" />
-              </div>
-              <div>
-                <Label>Max Users</Label>
-                <Input type="number" defaultValue={editDialog.users} className="mt-1" />
-              </div>
-              <div>
-                <Label>Screenshot Frequency</Label>
-                <Input defaultValue={editDialog.screenshots} className="mt-1" />
-              </div>
-              <div>
-                <Label>Data Retention</Label>
-                <Input defaultValue={editDialog.retention} className="mt-1" />
-              </div>
-            </div>
-          )}
+          {renderPlanForm(editForm, setEditForm)}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialog(null)}>Cancel</Button>
-            <Button onClick={() => { toast({ title: "Plan Updated" }); setEditDialog(null); }}>Save Changes</Button>
+            <Button onClick={handleSaveEdit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Plan Dialog */}
+      <Dialog open={createDialog} onOpenChange={setCreateDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create New Plan</DialogTitle>
+            <DialogDescription>This plan will appear on the public Pricing page.</DialogDescription>
+          </DialogHeader>
+          {renderPlanForm(createForm, setCreateForm)}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialog(false)}>Cancel</Button>
+            <Button onClick={handleCreate}>Create Plan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Plan</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{deleteDialog?.name}</strong>? This will remove it from the Pricing page. {deleteDialog && deleteDialog.active > 0 && `${deleteDialog.active} companies are currently on this plan.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialog(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete}>Delete Plan</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -732,8 +910,6 @@ const SubscriptionsTab = () => (
       <h1 className="text-2xl font-bold text-foreground">Subscriptions</h1>
       <p className="text-sm text-muted-foreground">Active and past subscriptions across all companies</p>
     </div>
-
-    {/* Summary cards */}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       {[
         { label: "Active", value: subscriptions.filter(s => s.status === "active").length, color: "text-status-active" },
@@ -747,7 +923,6 @@ const SubscriptionsTab = () => (
         </div>
       ))}
     </div>
-
     <div className="rounded-xl bg-gradient-card border border-border overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -794,9 +969,7 @@ const AnalyticsTab = () => (
       </h1>
       <p className="text-sm text-muted-foreground">Platform-wide growth and performance metrics</p>
     </div>
-
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Revenue Trend */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl bg-gradient-card border border-border p-5">
         <h3 className="text-sm font-medium text-foreground mb-4">Revenue & Company Growth</h3>
         <ResponsiveContainer width="100%" height={240}>
@@ -812,8 +985,6 @@ const AnalyticsTab = () => (
           </LineChart>
         </ResponsiveContainer>
       </motion.div>
-
-      {/* User Growth */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="rounded-xl bg-gradient-card border border-border p-5">
         <h3 className="text-sm font-medium text-foreground mb-4">User Growth (6 months)</h3>
         <ResponsiveContainer width="100%" height={240}>
@@ -832,8 +1003,6 @@ const AnalyticsTab = () => (
           </AreaChart>
         </ResponsiveContainer>
       </motion.div>
-
-      {/* Daily Signups */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="rounded-xl bg-gradient-card border border-border p-5">
         <h3 className="text-sm font-medium text-foreground mb-4">Daily Signups (This Week)</h3>
         <ResponsiveContainer width="100%" height={200}>
@@ -846,8 +1015,6 @@ const AnalyticsTab = () => (
           </BarChart>
         </ResponsiveContainer>
       </motion.div>
-
-      {/* Plan Distribution */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="rounded-xl bg-gradient-card border border-border p-5">
         <h3 className="text-sm font-medium text-foreground mb-4">Plan Distribution</h3>
         <ResponsiveContainer width="100%" height={200}>
@@ -861,8 +1028,6 @@ const AnalyticsTab = () => (
         </ResponsiveContainer>
       </motion.div>
     </div>
-
-    {/* Key Metrics Table */}
     <div className="rounded-xl bg-gradient-card border border-border p-5">
       <h3 className="text-sm font-medium text-foreground mb-4">Key Metrics Summary</h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -894,25 +1059,17 @@ const AnalyticsTab = () => (
 // ─── Settings Tab ───
 const SettingsTab = () => {
   const { toast } = useToast();
-
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Platform Settings</h1>
         <p className="text-sm text-muted-foreground">Global configuration for the WEBMOK platform</p>
       </div>
-
       <div className="rounded-xl bg-gradient-card border border-border p-5 space-y-4">
         <h3 className="font-medium text-foreground">General</h3>
         <div className="space-y-3">
-          <div>
-            <Label>Platform Name</Label>
-            <Input defaultValue="WEBMOK" className="mt-1" />
-          </div>
-          <div>
-            <Label>Support Email</Label>
-            <Input defaultValue="support@webmok.com" className="mt-1" />
-          </div>
+          <div><Label>Platform Name</Label><Input defaultValue="WEBMOK" className="mt-1" /></div>
+          <div><Label>Support Email</Label><Input defaultValue="support@webmok.com" className="mt-1" /></div>
           <div>
             <Label>Default Timezone</Label>
             <Select defaultValue="UTC">
@@ -928,7 +1085,6 @@ const SettingsTab = () => {
           </div>
         </div>
       </div>
-
       <div className="rounded-xl bg-gradient-card border border-border p-5 space-y-4">
         <h3 className="font-medium text-foreground">Security & Access</h3>
         <div className="space-y-3">
@@ -939,16 +1095,12 @@ const SettingsTab = () => {
             { label: "Audit Logging", desc: "Log all admin actions for compliance", default: true },
           ].map(s => (
             <div key={s.label} className="flex items-center justify-between">
-              <div>
-                <Label className="text-sm">{s.label}</Label>
-                <p className="text-xs text-muted-foreground">{s.desc}</p>
-              </div>
+              <div><Label className="text-sm">{s.label}</Label><p className="text-xs text-muted-foreground">{s.desc}</p></div>
               <Switch defaultChecked={s.default} />
             </div>
           ))}
         </div>
       </div>
-
       <div className="rounded-xl bg-gradient-card border border-border p-5 space-y-4">
         <h3 className="font-medium text-foreground">Data & Storage</h3>
         <div className="space-y-3">
@@ -977,7 +1129,6 @@ const SettingsTab = () => {
           </div>
         </div>
       </div>
-
       <Button onClick={() => toast({ title: "Settings Saved", description: "Platform settings updated successfully." })}>
         Save Settings
       </Button>
