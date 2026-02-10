@@ -62,6 +62,7 @@ const AgentPanel = () => {
   const [idleReason, setIdleReason] = useState("");
   const [showStartReminder, setShowStartReminder] = useState(false);
   const [loginTime, setLoginTime] = useState<Date | null>(null);
+  const [forceLogoutTriggered, setForceLogoutTriggered] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const screenshotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -197,6 +198,17 @@ const AgentPanel = () => {
     addLog({ type: "logout", detail: "Session ended" });
     setShowSummary(true);
     toast("Logged out — session ended", { icon: "⏹️" });
+  };
+
+  // Simulate admin force logout — in real app this comes via WebSocket/push
+  const handleForceLogout = () => {
+    setForceLogoutTriggered(true);
+    addLog({ type: "logout", detail: "⚠️ Force logout by admin" });
+    toast.error("Your session was ended remotely by an administrator.");
+    setTimeout(() => {
+      handleLogout();
+      setForceLogoutTriggered(false);
+    }, 1500);
   };
 
   const handleIdleSubmit = () => {
@@ -391,6 +403,25 @@ const AgentPanel = () => {
         <p className="text-[10px] text-muted-foreground text-center mt-3">
           Tracking is managed by your organization. User cannot disable monitoring permanently.
         </p>
+
+        {/* Admin Force Logout Simulation */}
+        {isWorking && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3">
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[10px] text-muted-foreground mb-2 font-medium">🔧 Admin Simulation</p>
+              <Button
+                onClick={handleForceLogout}
+                variant="destructive"
+                size="sm"
+                className="w-full gap-2 text-xs"
+                disabled={forceLogoutTriggered}
+              >
+                <LogOut className="h-3 w-3" />
+                {forceLogoutTriggered ? "Force Logout In Progress..." : "Simulate Admin Force Logout"}
+              </Button>
+            </div>
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Idle Justification Dialog */}

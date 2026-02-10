@@ -41,6 +41,7 @@ import ProductivityAnalytics from "./pages/solutions/ProductivityAnalytics";
 import EmployeeMonitoring from "./pages/solutions/EmployeeMonitoring";
 import TimeReporting from "./pages/solutions/TimeReporting";
 import AgentPanel from "./pages/AgentPanel";
+import SessionTimeline from "./pages/SessionTimeline";
 
 const queryClient = new QueryClient();
 
@@ -89,6 +90,7 @@ const App = () => (
               <Route path="/dashboard/restrictions" element={<CompanyAdminAuthGuard><AppRestrictions /></CompanyAdminAuthGuard>} />
               <Route path="/dashboard/justifications" element={<CompanyAdminAuthGuard><IdleJustification /></CompanyAdminAuthGuard>} />
               <Route path="/dashboard/attendance" element={<CompanyAdminAuthGuard><Attendance /></CompanyAdminAuthGuard>} />
+              <Route path="/dashboard/sessions" element={<CompanyAdminAuthGuard><SessionTimeline /></CompanyAdminAuthGuard>} />
               <Route path="/dashboard/*" element={<CompanyAdminAuthGuard><Dashboard /></CompanyAdminAuthGuard>} />
 
               {/* Super Admin — protected */}
