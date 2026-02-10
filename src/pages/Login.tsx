@@ -4,10 +4,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, ArrowRight, Monitor, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Monitor, AlertTriangle } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
+import OtpVerification from "@/components/OtpVerification";
 
 const Login = () => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -16,45 +17,62 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpPhone, setOtpPhone] = useState("");
+  const [redirectTo, setRedirectTo] = useState("/dashboard");
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, pendingAuth, completePendingAuth } = useAuth();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    if (!email.trim() || !password.trim()) {
-      setError("Please enter both email and password.");
-      return;
-    }
+    if (!email.trim() || !password.trim()) { setError("Please enter both email and password."); return; }
 
     setIsLoading(true);
-    // Simulate network delay
     setTimeout(() => {
       const result = login(email.trim(), password);
       setIsLoading(false);
 
       if (result.success) {
-        toast({
-          title: "Login Successful",
-          description: "Device bound. Tracking started.",
-        });
-        navigate(result.redirectTo || "/dashboard");
+        if (result.requiresOtp) {
+          setOtpStep(true);
+          setRedirectTo(result.redirectTo || "/dashboard");
+        } else {
+          toast({ title: "Login Successful", description: "Device bound. Tracking started." });
+          navigate(result.redirectTo || "/dashboard");
+        }
       } else {
         setError(result.error || "Login failed.");
       }
     }, 500);
   };
 
+  const handleOtpVerified = () => {
+    completePendingAuth();
+    toast({ title: "Login Successful", description: "Phone verified. Device bound. Tracking started." });
+    navigate(redirectTo);
+  };
+
+  if (otpStep) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center px-4 pt-16">
+          <OtpVerification
+            phone={otpPhone || "+91••••••••10"}
+            onVerified={handleOtpVerified}
+            onCancel={() => setOtpStep(false)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
       <div className="flex-1 flex items-center justify-center px-4 pt-16">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
           <div className="rounded-xl bg-gradient-card border border-border p-8">
             <div className="text-center mb-6">
               <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center font-bold text-primary-foreground mx-auto mb-3">W</div>
@@ -77,11 +95,7 @@ const Login = () => {
                 <Label htmlFor="password">Password</Label>
                 <div className="relative mt-1.5">
                   <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>

@@ -5,21 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Eye, EyeOff, CheckCircle2, AlertTriangle, UserPlus, Monitor } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, AlertTriangle, UserPlus, Monitor, Phone } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ROLE_LABELS } from "@/lib/permissions";
 import Navbar from "@/components/Navbar";
 import { toast } from "@/hooks/use-toast";
+import OtpVerification from "@/components/OtpVerification";
 
 const AcceptInvite = () => {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
-  const { invites, acceptInvite } = useAuth();
+  const { invites, acceptInvite, completePendingAuth } = useAuth();
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [otpStep, setOtpStep] = useState(false);
 
   const invite = invites.find(i => i.token === token);
 
@@ -28,16 +31,25 @@ const AcceptInvite = () => {
     setError("");
 
     if (!name.trim()) { setError("Please enter your full name."); return; }
+    if (!phone.trim() || phone.length < 10) { setError("Please enter a valid mobile number."); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords do not match."); return; }
 
-    const result = acceptInvite(token!, name.trim(), password);
-    if (result.success) {
-      toast({ title: "Account Activated!", description: `Welcome to ${invite?.companyName}. Desktop tracking is now active.` });
+    const result = acceptInvite(token!, name.trim(), password, phone.trim());
+    if (result.success && result.requiresOtp) {
+      setOtpStep(true);
+    } else if (result.success) {
+      toast({ title: "Account Activated!", description: `Welcome to ${invite?.companyName}.` });
       navigate("/dashboard");
     } else {
       setError(result.error || "Something went wrong.");
     }
+  };
+
+  const handleOtpVerified = () => {
+    completePendingAuth();
+    toast({ title: "Account Activated!", description: `Phone verified. Welcome to ${invite?.companyName}. Tracking active.` });
+    navigate("/dashboard");
   };
 
   if (!invite) {
@@ -94,6 +106,17 @@ const AcceptInvite = () => {
     );
   }
 
+  if (otpStep) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center px-4 pt-16">
+          <OtpVerification phone={phone} onVerified={handleOtpVerified} onCancel={() => setOtpStep(false)} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
@@ -119,6 +142,11 @@ const AcceptInvite = () => {
                 <Input id="name" placeholder="Your full name" value={name} onChange={e => setName(e.target.value)} className="mt-1.5" />
               </div>
               <div>
+                <Label htmlFor="phone" className="flex items-center gap-1"><Phone size={12} /> Mobile Number <span className="text-destructive">*</span></Label>
+                <Input id="phone" type="tel" placeholder="+91 98765 43210" value={phone} onChange={e => setPhone(e.target.value)} className="mt-1.5" />
+                <p className="text-[10px] text-muted-foreground mt-1">OTP will be sent for verification</p>
+              </div>
+              <div>
                 <Label htmlFor="password">Create Password</Label>
                 <div className="relative mt-1.5">
                   <Input id="password" type={showPassword ? "text" : "password"} placeholder="Min 6 characters" value={password} onChange={e => setPassword(e.target.value)} />
@@ -135,7 +163,7 @@ const AcceptInvite = () => {
               {error && <p className="text-sm text-destructive flex items-center gap-1"><AlertTriangle size={14} /> {error}</p>}
 
               <Button type="submit" className="w-full gap-2" size="lg">
-                <CheckCircle2 size={16} /> Activate Account & Start Tracking
+                <CheckCircle2 size={16} /> Verify Phone & Activate
               </Button>
 
               <div className="rounded-lg border border-border bg-secondary/30 p-3 flex items-start gap-3">
