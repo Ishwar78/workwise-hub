@@ -40,6 +40,7 @@ import WorkforceAnalytics from "./pages/solutions/WorkforceAnalytics";
 import ProductivityAnalytics from "./pages/solutions/ProductivityAnalytics";
 import EmployeeMonitoring from "./pages/solutions/EmployeeMonitoring";
 import TimeReporting from "./pages/solutions/TimeReporting";
+import AgentPanel from "./pages/AgentPanel";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +71,7 @@ const App = () => (
               <Route path="/solutions/productivity-analytics" element={<ProductivityAnalytics />} />
               <Route path="/solutions/employee-monitoring" element={<EmployeeMonitoring />} />
               <Route path="/solutions/time-reporting" element={<TimeReporting />} />
+              <Route path="/agent" element={<AgentPanel />} />
 
               {/* Company Dashboard — protected */}
               <Route path="/dashboard" element={<CompanyAdminAuthGuard><Dashboard /></CompanyAdminAuthGuard>} />
