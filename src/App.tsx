@@ -24,6 +24,7 @@ import ApiSpecification from "./pages/ApiSpecification";
 import NotificationsPage from "./pages/NotificationsPage";
 import Onboarding from "./pages/Onboarding";
 import AppRestrictions from "./pages/AppRestrictions";
+import IdleJustification from "./pages/IdleJustification";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const App = () => (
             <Route path="/dashboard/api-spec" element={<ApiSpecification />} />
             <Route path="/dashboard/notifications" element={<NotificationsPage />} />
             <Route path="/dashboard/restrictions" element={<AppRestrictions />} />
+            <Route path="/dashboard/justifications" element={<IdleJustification />} />
             <Route path="/dashboard/*" element={<Dashboard />} />
             <Route path="/super-admin" element={<SuperAdmin />} />
             <Route path="/super-admin/*" element={<SuperAdmin />} />
