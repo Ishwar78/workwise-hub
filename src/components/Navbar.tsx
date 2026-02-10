@@ -43,10 +43,10 @@ const Navbar = () => {
         </div>
 
         <div className="hidden lg:flex items-center gap-3">
-          <Link to="/login">
+          <Link to="/admin/login">
             <Button variant="ghost" size="sm">Login</Button>
           </Link>
-          <Link to="/login">
+          <Link to="/admin/login">
             <Button size="sm">Book Demo</Button>
           </Link>
         </div>
@@ -70,8 +70,8 @@ const Navbar = () => {
               <Link to="/download" className="text-sm text-muted-foreground py-2" onClick={() => setMobileOpen(false)}>Download</Link>
               <Link to="/contact" className="text-sm text-muted-foreground py-2" onClick={() => setMobileOpen(false)}>Contact</Link>
               <div className="flex gap-2 pt-2">
-                <Link to="/login" className="flex-1"><Button variant="ghost" className="w-full" size="sm">Login</Button></Link>
-                <Link to="/login" className="flex-1"><Button className="w-full" size="sm">Book Demo</Button></Link>
+                <Link to="/admin/login" className="flex-1"><Button variant="ghost" className="w-full" size="sm">Login</Button></Link>
+                <Link to="/admin/login" className="flex-1"><Button className="w-full" size="sm">Book Demo</Button></Link>
               </div>
             </div>
           </motion.div>

@@ -1,5 +1,5 @@
 // ─── Role Types ───
-export type AppRole = "company_admin" | "sub_admin" | "user";
+export type AppRole = "super_admin" | "company_admin" | "sub_admin" | "user";
 
 // ─── Permission Keys ───
 export type Permission =
@@ -20,10 +20,20 @@ export type Permission =
   | "manage_settings"
   | "configure_monitoring"
   | "export_reports"
-  | "view_attendance";
+  | "view_attendance"
+  | "platform_manage_companies"
+  | "platform_manage_plans"
+  | "platform_manage_subscriptions"
+  | "platform_view_analytics";
 
 // ─── Permission Matrix ───
 const PERMISSION_MATRIX: Record<AppRole, Set<Permission>> = {
+  super_admin: new Set([
+    "platform_manage_companies",
+    "platform_manage_plans",
+    "platform_manage_subscriptions",
+    "platform_view_analytics",
+  ]),
   company_admin: new Set([
     "view_dashboard",
     "view_team",
@@ -75,12 +85,14 @@ export function getPermissions(role: AppRole): Permission[] {
 
 // ─── Role Display Labels ───
 export const ROLE_LABELS: Record<AppRole, string> = {
+  super_admin: "Super Admin",
   company_admin: "Company Admin",
   sub_admin: "Sub-Admin",
   user: "User",
 };
 
 export const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
+  super_admin: "Platform owner — manage all companies, plans, subscriptions & revenue",
   company_admin: "Full company control — invite users, manage billing, configure monitoring",
   sub_admin: "View users, reports & screenshots — no billing or settings access",
   user: "Monitored employee — view own dashboard and time logs",

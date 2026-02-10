@@ -18,7 +18,7 @@ const RoleSwitcher = () => {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {(Object.keys(ROLE_LABELS) as AppRole[]).map((role) => (
+          {(Object.keys(ROLE_LABELS) as AppRole[]).filter(r => r !== "super_admin").map((role) => (
             <SelectItem key={role} value={role} className="text-xs">
               {ROLE_LABELS[role]}
             </SelectItem>
