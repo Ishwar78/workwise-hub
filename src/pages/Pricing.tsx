@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { usePlatform } from "@/contexts/PlatformContext";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 } as const,
@@ -13,55 +14,9 @@ const fadeUp = {
   }),
 };
 
-const plans = [
-  {
-    name: "Free Trial",
-    price: "$0",
-    period: "14 days",
-    users: "Up to 5 users",
-    features: ["12 screenshots/hr", "Time tracking", "Basic reports", "1 month storage", "Email support"],
-    cta: "Start Free",
-    popular: false,
-  },
-  {
-    name: "Starter",
-    price: "$49",
-    period: "/month",
-    users: "Up to 10 users",
-    features: ["12 screenshots/hr", "Time tracking", "Full reports", "3 months storage", "URL tracking", "Priority support"],
-    cta: "Get Started",
-    popular: false,
-  },
-  {
-    name: "Professional",
-    price: "$99",
-    period: "/month",
-    users: "Up to 25 users",
-    features: ["12 screenshots/hr", "Time tracking", "Full reports", "3 months storage", "URL & app tracking", "Idle detection", "PDF/CSV export", "Sub-admin roles"],
-    cta: "Get Started",
-    popular: true,
-  },
-  {
-    name: "Team",
-    price: "$199",
-    period: "/month",
-    users: "Up to 50 users",
-    features: ["12 screenshots/hr", "All Pro features", "3 months storage", "Advanced analytics", "API access", "Dedicated support"],
-    cta: "Get Started",
-    popular: false,
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    period: "",
-    users: "100+ users",
-    features: ["Custom screenshot rate", "Unlimited storage", "All features", "On-premise option", "SLA guarantee", "Account manager"],
-    cta: "Contact Sales",
-    popular: false,
-  },
-];
-
 const Pricing = () => {
+  const { plans } = usePlatform();
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -76,10 +31,10 @@ const Pricing = () => {
             </motion.p>
           </motion.div>
 
-          <motion.div initial="hidden" animate="visible" className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <motion.div initial="hidden" animate="visible" className={`grid gap-4 ${plans.length <= 3 ? "md:grid-cols-2 lg:grid-cols-3" : plans.length <= 4 ? "md:grid-cols-2 lg:grid-cols-4" : "md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"}`}>
             {plans.map((plan, i) => (
               <motion.div
-                key={plan.name}
+                key={plan.id}
                 variants={fadeUp}
                 custom={i}
                 className={`relative rounded-xl p-6 border transition-all duration-300 hover:shadow-glow ${
@@ -95,12 +50,14 @@ const Pricing = () => {
                 )}
                 <h3 className="font-semibold text-foreground text-lg">{plan.name}</h3>
                 <div className="mt-3 mb-1">
-                  <span className="text-3xl font-bold text-foreground">{plan.price}</span>
-                  <span className="text-sm text-muted-foreground">{plan.period}</span>
+                  <span className="text-3xl font-bold text-foreground">
+                    {plan.price === 0 ? "Free" : `$${plan.price}`}
+                  </span>
+                  {plan.price > 0 && <span className="text-sm text-muted-foreground">/month</span>}
                 </div>
-                <p className="text-sm text-primary mb-4">{plan.users}</p>
+                <p className="text-sm text-primary mb-4">Up to {plan.users} users</p>
                 <ul className="space-y-2 mb-6">
-                  {plan.features.map((f) => (
+                  {(plan.features ?? []).map((f) => (
                     <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
                       <CheckCircle2 size={14} className="text-primary mt-0.5 shrink-0" />
                       {f}
@@ -113,7 +70,7 @@ const Pricing = () => {
                     variant={plan.popular ? "default" : "outline"}
                     size="sm"
                   >
-                    {plan.cta} <ArrowRight size={14} />
+                    {plan.price === 0 ? "Start Free" : "Get Started"} <ArrowRight size={14} />
                   </Button>
                 </Link>
               </motion.div>
