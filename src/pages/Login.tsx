@@ -4,12 +4,47 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Monitor, CheckCircle2, AlertTriangle } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/hooks/use-toast";
 
 const Login = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
+  const { login } = useAuth();
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!email.trim() || !password.trim()) {
+      setError("Please enter both email and password.");
+      return;
+    }
+
+    setIsLoading(true);
+    // Simulate network delay
+    setTimeout(() => {
+      const result = login(email.trim(), password);
+      setIsLoading(false);
+
+      if (result.success) {
+        toast({
+          title: "Login Successful",
+          description: "Device bound. Tracking started.",
+        });
+        navigate(result.redirectTo || "/dashboard");
+      } else {
+        setError(result.error || "Login failed.");
+      }
+    }, 500);
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -27,7 +62,7 @@ const Login = () => {
               <p className="text-sm text-muted-foreground mt-1">{isSignUp ? "Start monitoring your team" : "Sign in to your dashboard"}</p>
             </div>
 
-            <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+            <form className="space-y-4" onSubmit={handleSubmit}>
               {isSignUp && (
                 <div>
                   <Label htmlFor="company">Company Name</Label>
@@ -36,12 +71,12 @@ const Login = () => {
               )}
               <div>
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@company.com" className="mt-1.5" />
+                <Input id="email" type="email" placeholder="you@company.com" className="mt-1.5" value={email} onChange={e => setEmail(e.target.value)} />
               </div>
               <div>
                 <Label htmlFor="password">Password</Label>
                 <div className="relative mt-1.5">
-                  <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" />
+                  <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
@@ -52,9 +87,36 @@ const Login = () => {
                 </div>
               </div>
 
-              <Button className="w-full gap-2" size="lg">
-                {isSignUp ? "Create Account" : "Sign In"} <ArrowRight size={16} />
+              {error && (
+                <p className="text-sm text-destructive flex items-center gap-1">
+                  <AlertTriangle size={14} /> {error}
+                </p>
+              )}
+
+              <Button className="w-full gap-2" size="lg" type="submit" disabled={isLoading}>
+                {isLoading ? "Signing in..." : isSignUp ? "Create Account" : "Sign In"} {!isLoading && <ArrowRight size={16} />}
               </Button>
+
+              {!isSignUp && (
+                <div className="rounded-lg border border-border bg-secondary/30 p-3 flex items-start gap-3">
+                  <Monitor size={16} className="text-primary mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-medium text-foreground">Desktop Agent Login</p>
+                    <p className="text-[10px] text-muted-foreground">Use these same credentials in the desktop app. Your device will be auto-bound and tracking will start immediately.</p>
+                  </div>
+                </div>
+              )}
+
+              {!isSignUp && (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-1.5">
+                  <p className="text-[10px] font-medium text-primary">Demo Credentials</p>
+                  <div className="text-[10px] text-muted-foreground space-y-0.5">
+                    <p><span className="text-foreground font-medium">Admin:</span> alice@acme.com / admin123</p>
+                    <p><span className="text-foreground font-medium">User:</span> bob@acme.com / user123</p>
+                    <p><span className="text-foreground font-medium">Super Admin:</span> superadmin@webmok.com / super123</p>
+                  </div>
+                </div>
+              )}
             </form>
 
             <p className="text-center text-sm text-muted-foreground mt-4">
