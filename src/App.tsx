@@ -32,6 +32,14 @@ import IdleJustification from "./pages/IdleJustification";
 import Attendance from "./pages/Attendance";
 import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
+import TimeTracker from "./pages/features/TimeTracker";
+import TeamManagementFeature from "./pages/features/TeamManagementFeature";
+import ScreenshotMonitoring from "./pages/features/ScreenshotMonitoring";
+import UrlTracking from "./pages/features/UrlTracking";
+import WorkforceAnalytics from "./pages/solutions/WorkforceAnalytics";
+import ProductivityAnalytics from "./pages/solutions/ProductivityAnalytics";
+import EmployeeMonitoring from "./pages/solutions/EmployeeMonitoring";
+import TimeReporting from "./pages/solutions/TimeReporting";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +62,14 @@ const App = () => (
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/download" element={<Download />} />
               <Route path="/contact" element={<Contact />} />
+              <Route path="/features/time-tracker" element={<TimeTracker />} />
+              <Route path="/features/team-management" element={<TeamManagementFeature />} />
+              <Route path="/features/screenshot-monitoring" element={<ScreenshotMonitoring />} />
+              <Route path="/features/url-tracking" element={<UrlTracking />} />
+              <Route path="/solutions/workforce-analytics" element={<WorkforceAnalytics />} />
+              <Route path="/solutions/productivity-analytics" element={<ProductivityAnalytics />} />
+              <Route path="/solutions/employee-monitoring" element={<EmployeeMonitoring />} />
+              <Route path="/solutions/time-reporting" element={<TimeReporting />} />
 
               {/* Company Dashboard — protected */}
               <Route path="/dashboard" element={<CompanyAdminAuthGuard><Dashboard /></CompanyAdminAuthGuard>} />

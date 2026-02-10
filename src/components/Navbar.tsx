@@ -5,17 +5,17 @@ import { Menu, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const features = [
-  { label: "Time Tracker", href: "/#features" },
-  { label: "Team Management", href: "/#features" },
-  { label: "Screenshot Monitoring", href: "/#features" },
-  { label: "URL Tracking", href: "/#features" },
+  { label: "Time Tracker", href: "/features/time-tracker" },
+  { label: "Team Management", href: "/features/team-management" },
+  { label: "Screenshot Monitoring", href: "/features/screenshot-monitoring" },
+  { label: "URL Tracking", href: "/features/url-tracking" },
 ];
 
 const solutions = [
-  { label: "Workforce Analytics", href: "/#features" },
-  { label: "Productivity Analytics", href: "/#features" },
-  { label: "Employee Monitoring", href: "/#features" },
-  { label: "Time Reporting", href: "/#features" },
+  { label: "Workforce Analytics", href: "/solutions/workforce-analytics" },
+  { label: "Productivity Analytics", href: "/solutions/productivity-analytics" },
+  { label: "Employee Monitoring", href: "/solutions/employee-monitoring" },
+  { label: "Time Reporting", href: "/solutions/time-reporting" },
 ];
 
 const Navbar = () => {
