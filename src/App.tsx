@@ -27,6 +27,7 @@ import Onboarding from "./pages/Onboarding";
 import AppRestrictions from "./pages/AppRestrictions";
 import IdleJustification from "./pages/IdleJustification";
 import Attendance from "./pages/Attendance";
+import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/pricing" element={<Pricing />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/invite/:token" element={<AcceptInvite />} />
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/download" element={<Download />} />
               <Route path="/contact" element={<Contact />} />

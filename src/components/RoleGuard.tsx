@@ -33,7 +33,7 @@ export const PageGuard = ({ permission, children }: { permission: Permission; ch
         </div>
         <h2 className="text-xl font-bold text-foreground">Access Denied</h2>
         <p className="text-sm text-muted-foreground">
-          Your role (<span className="font-medium text-foreground">{ROLE_LABELS[user.role]}</span>) does not have permission to access this page. Contact your Company Admin for access.
+          Your role (<span className="font-medium text-foreground">{user ? ROLE_LABELS[user.role] : "Unknown"}</span>) does not have permission to access this page. Contact your Company Admin for access.
         </p>
       </div>
     </div>

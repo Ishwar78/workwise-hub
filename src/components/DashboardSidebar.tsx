@@ -42,7 +42,7 @@ const DashboardSidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const { can } = usePermissions();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const visibleItems = menuItems.filter((item) => can(item.permission));
 
@@ -67,9 +67,9 @@ const DashboardSidebar = () => {
         <div className="px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Building2 size={14} className="text-primary" />
-            <span className="text-xs text-muted-foreground">{user.companyName}</span>
+            <span className="text-xs text-muted-foreground">{user?.companyName ?? "—"}</span>
           </div>
-          <span className="text-[10px] text-primary">{ROLE_LABELS[user.role]}</span>
+          <span className="text-[10px] text-primary">{user ? ROLE_LABELS[user.role] : "—"}</span>
         </div>
       )}
 
@@ -95,7 +95,7 @@ const DashboardSidebar = () => {
       {!collapsed && <RoleSwitcher />}
 
       <div className="p-2 border-t border-border">
-        <Link to="/" className="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary">
+        <Link to="/login" onClick={logout} className="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary">
           <LogOut size={18} />
           {!collapsed && "Logout"}
         </Link>
