@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Monitor, Apple, Terminal, Download, Shield, Clock, Camera,
   Eye, RefreshCw, Lock, Wifi, WifiOff, MousePointer, AppWindow,
-  Globe, HardDrive, ChevronDown, Cpu, MemoryStick, HardDriveDownload
+  Globe, HardDrive, ChevronDown, Cpu, MemoryStick, HardDriveDownload, Play
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -352,6 +352,27 @@ const DownloadPage = () => {
                   </div>
                 ))}
               </div>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Agent Panel CTA */}
+      <section className="py-16 bg-muted/30">
+        <div className="container mx-auto px-4 max-w-3xl">
+          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center">
+            <motion.h2 variants={fadeUp} custom={0} className="text-2xl md:text-3xl font-bold mb-2">
+              Try the Agent Control Panel
+            </motion.h2>
+            <motion.p variants={fadeUp} custom={1} className="text-muted-foreground mb-6">
+              After installing the agent, use the control panel to Start, Pause, or End your work sessions.
+            </motion.p>
+            <motion.div variants={fadeUp} custom={2}>
+              <Button size="lg" className="gap-2" asChild>
+                <a href="/agent">
+                  <Play size={18} /> Open Agent Panel
+                </a>
+              </Button>
             </motion.div>
           </motion.div>
         </div>

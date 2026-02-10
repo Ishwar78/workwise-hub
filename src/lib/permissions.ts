@@ -12,6 +12,7 @@ export type Permission =
   | "view_reports"
   | "view_notifications"
   | "view_api_spec"
+  | "view_sessions"
   | "invite_members"
   | "manage_team"
   | "assign_roles"
@@ -53,6 +54,7 @@ const PERMISSION_MATRIX: Record<AppRole, Set<Permission>> = {
     "configure_monitoring",
     "export_reports",
     "view_attendance",
+    "view_sessions",
   ]),
   sub_admin: new Set([
     "view_dashboard",
@@ -66,6 +68,7 @@ const PERMISSION_MATRIX: Record<AppRole, Set<Permission>> = {
     "view_api_spec",
     "export_reports",
     "view_attendance",
+    "view_sessions",
   ]),
   user: new Set([
     "view_dashboard",
