@@ -3036,3 +3036,1251 @@ MongoDB:      ~500 GB/month (with TTL indexes)
 | **Vitest** | 1.x | Testing |
 | **Docker** | 24+ | Containerization |
 | **Terraform** | 1.7+ | Infrastructure as code |
+
+---
+
+## 12. Express.js Backend Server — Complete Boilerplate
+
+### Folder Structure
+
+```
+server/
+├── src/
+│   ├── index.ts                 # Entry point
+│   ├── app.ts                   # Express app setup
+│   ├── config/
+│   │   ├── env.ts               # Environment variables
+│   │   ├── database.ts          # MongoDB connection
+│   │   └── redis.ts             # Redis connection
+│   ├── middleware/
+│   │   ├── auth.ts              # JWT verification
+│   │   ├── roleGuard.ts         # Role-based access
+│   │   ├── tenantIsolation.ts   # company_id scoping
+│   │   ├── rateLimiter.ts       # Rate limiting
+│   │   ├── validate.ts          # Zod validation
+│   │   └── errorHandler.ts      # Global error handler
+│   ├── models/
+│   │   ├── Company.ts
+│   │   ├── User.ts
+│   │   ├── Session.ts
+│   │   ├── ActivityLog.ts
+│   │   └── Screenshot.ts
+│   ├── routes/
+│   │   ├── auth.routes.ts
+│   │   ├── session.routes.ts
+│   │   ├── activity.routes.ts
+│   │   ├── screenshot.routes.ts
+│   │   └── admin.routes.ts
+│   ├── services/
+│   │   ├── auth.service.ts
+│   │   ├── session.service.ts
+│   │   ├── activity.service.ts
+│   │   ├── screenshot.service.ts
+│   │   └── websocket.service.ts
+│   ├── utils/
+│   │   ├── logger.ts
+│   │   ├── s3.ts
+│   │   └── errors.ts
+│   └── types/
+│       └── index.ts
+├── package.json
+├── tsconfig.json
+└── Dockerfile
+```
+
+---
+
+### Config — env.ts
+
+```typescript
+import { z } from 'zod';
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.coerce.number().default(4000),
+  MONGODB_URI: z.string().url(),
+  REDIS_URL: z.string().url(),
+  JWT_PRIVATE_KEY: z.string().min(1),
+  JWT_PUBLIC_KEY: z.string().min(1),
+  JWT_ACCESS_EXPIRY: z.string().default('15m'),
+  JWT_REFRESH_EXPIRY: z.string().default('7d'),
+  AWS_REGION: z.string().default('us-east-1'),
+  AWS_S3_BUCKET: z.string(),
+  AWS_ACCESS_KEY_ID: z.string(),
+  AWS_SECRET_ACCESS_KEY: z.string(),
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_MAX: z.coerce.number().default(100),
+});
+
+export const env = envSchema.parse(process.env);
+```
+
+### Config — database.ts
+
+```typescript
+import mongoose from 'mongoose';
+import { env } from './env';
+import { logger } from '../utils/logger';
+
+export async function connectDatabase(): Promise<void> {
+  try {
+    await mongoose.connect(env.MONGODB_URI, {
+      maxPoolSize: 20,
+      minPoolSize: 5,
+      serverSelectionTimeoutMS: 5000,
+      heartbeatFrequencyMS: 10000,
+    });
+    logger.info('MongoDB connected');
+  } catch (error) {
+    logger.error('MongoDB connection failed', error);
+    process.exit(1);
+  }
+
+  mongoose.connection.on('error', (err) => logger.error('MongoDB error', err));
+  mongoose.connection.on('disconnected', () => logger.warn('MongoDB disconnected'));
+}
+```
+
+### Config — redis.ts
+
+```typescript
+import { createClient, RedisClientType } from 'redis';
+import { env } from './env';
+import { logger } from '../utils/logger';
+
+let redis: RedisClientType;
+
+export async function connectRedis(): Promise<RedisClientType> {
+  redis = createClient({ url: env.REDIS_URL });
+  redis.on('error', (err) => logger.error('Redis error', err));
+  await redis.connect();
+  logger.info('Redis connected');
+  return redis;
+}
+
+export function getRedis(): RedisClientType {
+  if (!redis) throw new Error('Redis not initialized');
+  return redis;
+}
+```
+
+---
+
+### Models
+
+#### Company.ts
+
+```typescript
+import mongoose, { Schema, Document } from 'mongoose';
+
+export interface ICompany extends Document {
+  name: string;
+  domain: string;
+  plan: 'free' | 'starter' | 'business' | 'enterprise';
+  settings: {
+    screenshot_interval: number;
+    idle_threshold: number;
+    max_devices_per_user: number;
+    blur_screenshots: boolean;
+    track_urls: boolean;
+    track_apps: boolean;
+  };
+  subscription: {
+    stripe_customer_id?: string;
+    stripe_subscription_id?: string;
+    status: 'active' | 'past_due' | 'canceled' | 'trialing';
+    current_period_end?: Date;
+  };
+  created_at: Date;
+}
+
+const CompanySchema = new Schema<ICompany>({
+  name: { type: String, required: true, trim: true },
+  domain: { type: String, required: true, unique: true, lowercase: true },
+  plan: { type: String, enum: ['free', 'starter', 'business', 'enterprise'], default: 'free' },
+  settings: {
+    screenshot_interval: { type: Number, default: 300 },
+    idle_threshold: { type: Number, default: 300 },
+    max_devices_per_user: { type: Number, default: 3 },
+    blur_screenshots: { type: Boolean, default: false },
+    track_urls: { type: Boolean, default: true },
+    track_apps: { type: Boolean, default: true },
+  },
+  subscription: {
+    stripe_customer_id: String,
+    stripe_subscription_id: String,
+    status: { type: String, enum: ['active', 'past_due', 'canceled', 'trialing'], default: 'trialing' },
+    current_period_end: Date,
+  },
+}, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
+
+export const Company = mongoose.model<ICompany>('Company', CompanySchema);
+```
+
+#### User.ts
+
+```typescript
+import mongoose, { Schema, Document, Types } from 'mongoose';
+
+export interface IUser extends Document {
+  company_id: Types.ObjectId;
+  email: string;
+  password_hash: string;
+  name: string;
+  role: 'company_admin' | 'sub_admin' | 'user';
+  devices: Array<{
+    device_id: string;
+    device_name: string;
+    os: string;
+    bound_at: Date;
+    last_seen: Date;
+  }>;
+  status: 'active' | 'suspended' | 'invited';
+  invite_token?: string;
+  last_login?: Date;
+}
+
+const UserSchema = new Schema<IUser>({
+  company_id: { type: Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password_hash: { type: String, required: true, select: false },
+  name: { type: String, required: true, trim: true },
+  role: { type: String, enum: ['company_admin', 'sub_admin', 'user'], default: 'user' },
+  devices: [{
+    device_id: { type: String, required: true },
+    device_name: String,
+    os: String,
+    bound_at: { type: Date, default: Date.now },
+    last_seen: { type: Date, default: Date.now },
+  }],
+  status: { type: String, enum: ['active', 'suspended', 'invited'], default: 'invited' },
+  invite_token: String,
+  last_login: Date,
+}, { timestamps: true });
+
+UserSchema.index({ company_id: 1, email: 1 });
+UserSchema.index({ invite_token: 1 }, { sparse: true });
+
+export const User = mongoose.model<IUser>('User', UserSchema);
+```
+
+#### Session.ts
+
+```typescript
+import mongoose, { Schema, Document, Types } from 'mongoose';
+
+export interface ISession extends Document {
+  user_id: Types.ObjectId;
+  company_id: Types.ObjectId;
+  device_id: string;
+  start_time: Date;
+  end_time?: Date;
+  status: 'active' | 'paused' | 'ended' | 'force_ended';
+  events: Array<{
+    type: 'start' | 'pause' | 'resume' | 'end' | 'force_end' | 'idle_start' | 'idle_end';
+    timestamp: Date;
+    metadata?: Record<string, unknown>;
+  }>;
+  summary: {
+    total_duration: number;
+    active_duration: number;
+    idle_duration: number;
+    pause_duration: number;
+    screenshots_count: number;
+    activity_score: number;
+  };
+}
+
+const SessionSchema = new Schema<ISession>({
+  user_id: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  company_id: { type: Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+  device_id: { type: String, required: true },
+  start_time: { type: Date, required: true, default: Date.now },
+  end_time: Date,
+  status: { type: String, enum: ['active', 'paused', 'ended', 'force_ended'], default: 'active' },
+  events: [{
+    type: { type: String, enum: ['start', 'pause', 'resume', 'end', 'force_end', 'idle_start', 'idle_end'], required: true },
+    timestamp: { type: Date, required: true },
+    metadata: Schema.Types.Mixed,
+  }],
+  summary: {
+    total_duration: { type: Number, default: 0 },
+    active_duration: { type: Number, default: 0 },
+    idle_duration: { type: Number, default: 0 },
+    pause_duration: { type: Number, default: 0 },
+    screenshots_count: { type: Number, default: 0 },
+    activity_score: { type: Number, default: 0 },
+  },
+}, { timestamps: true });
+
+SessionSchema.index({ company_id: 1, user_id: 1, start_time: -1 });
+SessionSchema.index({ status: 1 });
+SessionSchema.index({ end_time: 1 }, { expireAfterSeconds: 90 * 86400 }); // TTL 90 days
+
+export const Session = mongoose.model<ISession>('Session', SessionSchema);
+```
+
+#### ActivityLog.ts
+
+```typescript
+import mongoose, { Schema, Document, Types } from 'mongoose';
+
+export interface IActivityLog extends Document {
+  user_id: Types.ObjectId;
+  company_id: Types.ObjectId;
+  session_id: Types.ObjectId;
+  timestamp: Date;
+  interval_start: Date;
+  interval_end: Date;
+  keyboard_events: number;
+  mouse_events: number;
+  mouse_distance: number;
+  activity_score: number;
+  idle: boolean;
+  active_window: {
+    title: string;
+    app_name: string;
+    url?: string;
+    category?: string;
+  };
+}
+
+const ActivityLogSchema = new Schema<IActivityLog>({
+  user_id: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  company_id: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
+  session_id: { type: Schema.Types.ObjectId, ref: 'Session', required: true },
+  timestamp: { type: Date, required: true },
+  interval_start: { type: Date, required: true },
+  interval_end: { type: Date, required: true },
+  keyboard_events: { type: Number, default: 0 },
+  mouse_events: { type: Number, default: 0 },
+  mouse_distance: { type: Number, default: 0 },
+  activity_score: { type: Number, default: 0, min: 0, max: 100 },
+  idle: { type: Boolean, default: false },
+  active_window: {
+    title: { type: String, default: '' },
+    app_name: { type: String, default: '' },
+    url: String,
+    category: String,
+  },
+}, { timestamps: false });
+
+ActivityLogSchema.index({ company_id: 1, user_id: 1, timestamp: -1 });
+ActivityLogSchema.index({ session_id: 1 });
+ActivityLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: 90 * 86400 });
+
+export const ActivityLog = mongoose.model<IActivityLog>('ActivityLog', ActivityLogSchema);
+```
+
+#### Screenshot.ts
+
+```typescript
+import mongoose, { Schema, Document, Types } from 'mongoose';
+
+export interface IScreenshot extends Document {
+  user_id: Types.ObjectId;
+  company_id: Types.ObjectId;
+  session_id: Types.ObjectId;
+  timestamp: Date;
+  s3_key: string;
+  s3_bucket: string;
+  file_size: number;
+  resolution: { width: number; height: number };
+  monitor_id?: string;
+  activity_score: number;
+  active_window: { title: string; app_name: string };
+  blurred: boolean;
+}
+
+const ScreenshotSchema = new Schema<IScreenshot>({
+  user_id: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  company_id: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
+  session_id: { type: Schema.Types.ObjectId, ref: 'Session', required: true },
+  timestamp: { type: Date, required: true },
+  s3_key: { type: String, required: true },
+  s3_bucket: { type: String, required: true },
+  file_size: { type: Number, required: true },
+  resolution: {
+    width: { type: Number, required: true },
+    height: { type: Number, required: true },
+  },
+  monitor_id: String,
+  activity_score: { type: Number, default: 0 },
+  active_window: {
+    title: { type: String, default: '' },
+    app_name: { type: String, default: '' },
+  },
+  blurred: { type: Boolean, default: false },
+}, { timestamps: true });
+
+ScreenshotSchema.index({ company_id: 1, user_id: 1, timestamp: -1 });
+ScreenshotSchema.index({ session_id: 1 });
+ScreenshotSchema.index({ timestamp: 1 }, { expireAfterSeconds: 90 * 86400 });
+
+export const Screenshot = mongoose.model<IScreenshot>('Screenshot', ScreenshotSchema);
+```
+
+---
+
+### Middleware
+
+#### auth.ts — JWT Verification
+
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env';
+import { AppError } from '../utils/errors';
+
+export interface AuthPayload {
+  user_id: string;
+  company_id: string;
+  role: 'company_admin' | 'sub_admin' | 'user';
+  device_id: string;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      auth?: AuthPayload;
+    }
+  }
+}
+
+export function authenticate(req: Request, _res: Response, next: NextFunction): void {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    throw new AppError('Missing authorization token', 401);
+  }
+
+  try {
+    const token = header.slice(7);
+    const payload = jwt.verify(token, env.JWT_PUBLIC_KEY, {
+      algorithms: ['RS256'],
+      issuer: 'teamtreck-api',
+      audience: 'teamtreck-agent',
+    }) as AuthPayload;
+
+    // Device binding check
+    const deviceHeader = req.headers['x-device-id'] as string | undefined;
+    if (deviceHeader && payload.device_id && deviceHeader !== payload.device_id) {
+      throw new AppError('Device ID mismatch', 403);
+    }
+
+    req.auth = payload;
+    next();
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError('Invalid or expired token', 401);
+  }
+}
+```
+
+#### roleGuard.ts
+
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { AppError } from '../utils/errors';
+
+type Role = 'company_admin' | 'sub_admin' | 'user';
+
+export function requireRole(...roles: Role[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.auth) throw new AppError('Unauthorized', 401);
+    if (!roles.includes(req.auth.role)) {
+      throw new AppError('Insufficient permissions', 403);
+    }
+    next();
+  };
+}
+```
+
+#### tenantIsolation.ts
+
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { AppError } from '../utils/errors';
+
+// Injects company_id into req.query for all downstream queries
+export function enforceTenant(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.auth?.company_id) {
+    throw new AppError('Missing tenant context', 403);
+  }
+  // Attach for service layer use
+  req.query._company_id = req.auth.company_id;
+  next();
+}
+```
+
+#### rateLimiter.ts
+
+```typescript
+import rateLimit from 'express-rate-limit';
+import RedisStore from 'rate-limit-redis';
+import { getRedis } from '../config/redis';
+import { env } from '../config/env';
+
+export const apiLimiter = rateLimit({
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  max: env.RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new RedisStore({
+    sendCommand: (...args: string[]) => getRedis().sendCommand(args),
+  }),
+  message: { error: 'Too many requests, please try again later' },
+});
+
+// Stricter limiter for auth endpoints
+export const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  message: { error: 'Too many login attempts' },
+});
+```
+
+#### validate.ts
+
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { ZodSchema } from 'zod';
+import { AppError } from '../utils/errors';
+
+export function validate(schema: ZodSchema, source: 'body' | 'query' | 'params' = 'body') {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const result = schema.safeParse(req[source]);
+    if (!result.success) {
+      const messages = result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+      throw new AppError(`Validation failed: ${messages.join('; ')}`, 422);
+    }
+    req[source] = result.data;
+    next();
+  };
+}
+```
+
+#### errorHandler.ts
+
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { AppError } from '../utils/errors';
+import { logger } from '../utils/logger';
+
+export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
+  if (err instanceof AppError) {
+    res.status(err.statusCode).json({ error: err.message });
+    return;
+  }
+
+  logger.error('Unhandled error', { message: err.message, stack: err.stack });
+  res.status(500).json({ error: 'Internal server error' });
+}
+```
+
+---
+
+### Utils
+
+#### errors.ts
+
+```typescript
+export class AppError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 500,
+    public code?: string,
+  ) {
+    super(message);
+    this.name = 'AppError';
+  }
+}
+```
+
+#### logger.ts
+
+```typescript
+import winston from 'winston';
+import { env } from '../config/env';
+
+export const logger = winston.createLogger({
+  level: env.NODE_ENV === 'production' ? 'info' : 'debug',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    env.NODE_ENV === 'production'
+      ? winston.format.json()
+      : winston.format.combine(winston.format.colorize(), winston.format.simple()),
+  ),
+  transports: [new winston.transports.Console()],
+});
+```
+
+#### s3.ts
+
+```typescript
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { env } from '../config/env';
+
+const s3 = new S3Client({
+  region: env.AWS_REGION,
+  credentials: {
+    accessKeyId: env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+export async function uploadToS3(key: string, body: Buffer, contentType: string): Promise<string> {
+  await s3.send(new PutObjectCommand({
+    Bucket: env.AWS_S3_BUCKET,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+    ServerSideEncryption: 'AES256',
+  }));
+  return key;
+}
+
+export async function getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
+  return getSignedUrl(s3, new GetObjectCommand({
+    Bucket: env.AWS_S3_BUCKET,
+    Key: key,
+  }), { expiresIn });
+}
+
+export async function deleteFromS3(key: string): Promise<void> {
+  await s3.send(new DeleteObjectCommand({
+    Bucket: env.AWS_S3_BUCKET,
+    Key: key,
+  }));
+}
+```
+
+---
+
+### Routes
+
+#### auth.routes.ts
+
+```typescript
+import { Router } from 'express';
+import { z } from 'zod';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { validate } from '../middleware/validate';
+import { authenticate } from '../middleware/auth';
+import { authLimiter } from '../middleware/rateLimiter';
+import { User } from '../models/User';
+import { env } from '../config/env';
+import { getRedis } from '../config/redis';
+import { AppError } from '../utils/errors';
+
+const router = Router();
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  device_id: z.string().uuid(),
+  device_name: z.string().optional(),
+  os: z.string().optional(),
+});
+
+const refreshSchema = z.object({
+  refresh_token: z.string(),
+});
+
+function generateTokens(payload: object) {
+  const accessToken = jwt.sign(payload, env.JWT_PRIVATE_KEY, {
+    algorithm: 'RS256',
+    expiresIn: env.JWT_ACCESS_EXPIRY,
+    issuer: 'teamtreck-api',
+    audience: 'teamtreck-agent',
+  });
+  const refreshToken = jwt.sign(payload, env.JWT_PRIVATE_KEY, {
+    algorithm: 'RS256',
+    expiresIn: env.JWT_REFRESH_EXPIRY,
+    issuer: 'teamtreck-api',
+  });
+  return { accessToken, refreshToken };
+}
+
+// POST /api/auth/login
+router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
+  const { email, password, device_id, device_name, os } = req.body;
+
+  const user = await User.findOne({ email, status: 'active' }).select('+password_hash');
+  if (!user) throw new AppError('Invalid credentials', 401);
+
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) throw new AppError('Invalid credentials', 401);
+
+  // Device binding
+  const existingDevice = user.devices.find((d) => d.device_id === device_id);
+  if (!existingDevice) {
+    if (user.devices.length >= 3) {
+      throw new AppError('Maximum devices reached. Remove a device first.', 403);
+    }
+    user.devices.push({ device_id, device_name: device_name || 'Unknown', os: os || 'Unknown', bound_at: new Date(), last_seen: new Date() });
+  } else {
+    existingDevice.last_seen = new Date();
+  }
+  user.last_login = new Date();
+  await user.save();
+
+  const payload = {
+    user_id: user._id.toString(),
+    company_id: user.company_id.toString(),
+    role: user.role,
+    device_id,
+  };
+
+  const tokens = generateTokens(payload);
+
+  // Store refresh token in Redis (7-day expiry)
+  await getRedis().set(`refresh:${user._id}:${device_id}`, tokens.refreshToken, { EX: 7 * 86400 });
+
+  res.json({
+    token: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+  });
+});
+
+// POST /api/auth/refresh
+router.post('/refresh', validate(refreshSchema), async (req, res) => {
+  const { refresh_token } = req.body;
+  const decoded = jwt.verify(refresh_token, env.JWT_PUBLIC_KEY, { algorithms: ['RS256'] }) as any;
+
+  const stored = await getRedis().get(`refresh:${decoded.user_id}:${decoded.device_id}`);
+  if (stored !== refresh_token) throw new AppError('Invalid refresh token', 401);
+
+  const tokens = generateTokens({
+    user_id: decoded.user_id,
+    company_id: decoded.company_id,
+    role: decoded.role,
+    device_id: decoded.device_id,
+  });
+
+  await getRedis().set(`refresh:${decoded.user_id}:${decoded.device_id}`, tokens.refreshToken, { EX: 7 * 86400 });
+
+  res.json({ token: tokens.accessToken, refreshToken: tokens.refreshToken });
+});
+
+// POST /api/auth/logout
+router.post('/logout', authenticate, async (req, res) => {
+  await getRedis().del(`refresh:${req.auth!.user_id}:${req.auth!.device_id}`);
+  res.json({ success: true });
+});
+
+export default router;
+```
+
+#### session.routes.ts
+
+```typescript
+import { Router } from 'express';
+import { z } from 'zod';
+import { authenticate } from '../middleware/auth';
+import { enforceTenant } from '../middleware/tenantIsolation';
+import { requireRole } from '../middleware/roleGuard';
+import { validate } from '../middleware/validate';
+import { Session } from '../models/Session';
+import { AppError } from '../utils/errors';
+
+const router = Router();
+router.use(authenticate, enforceTenant);
+
+const startSchema = z.object({
+  device_id: z.string().uuid(),
+  timestamp: z.string().datetime(),
+});
+
+// POST /api/sessions/start
+router.post('/start', validate(startSchema), async (req, res) => {
+  const existing = await Session.findOne({ user_id: req.auth!.user_id, status: { $in: ['active', 'paused'] } });
+  if (existing) throw new AppError('Active session already exists', 409);
+
+  const session = await Session.create({
+    user_id: req.auth!.user_id,
+    company_id: req.auth!.company_id,
+    device_id: req.body.device_id,
+    start_time: new Date(req.body.timestamp),
+    events: [{ type: 'start', timestamp: new Date(req.body.timestamp) }],
+  });
+
+  res.status(201).json({ session_id: session._id, startTime: session.start_time });
+});
+
+// PUT /api/sessions/:id/pause
+router.put('/:id/pause', async (req, res) => {
+  const session = await Session.findOneAndUpdate(
+    { _id: req.params.id, user_id: req.auth!.user_id, status: 'active' },
+    { $set: { status: 'paused' }, $push: { events: { type: 'pause', timestamp: new Date() } } },
+    { new: true },
+  );
+  if (!session) throw new AppError('No active session found', 404);
+  res.json({ success: true });
+});
+
+// PUT /api/sessions/:id/resume
+router.put('/:id/resume', async (req, res) => {
+  const session = await Session.findOneAndUpdate(
+    { _id: req.params.id, user_id: req.auth!.user_id, status: 'paused' },
+    { $set: { status: 'active' }, $push: { events: { type: 'resume', timestamp: new Date() } } },
+    { new: true },
+  );
+  if (!session) throw new AppError('No paused session found', 404);
+  res.json({ success: true });
+});
+
+// PUT /api/sessions/:id/end
+router.put('/:id/end', async (req, res) => {
+  const session = await Session.findOneAndUpdate(
+    { _id: req.params.id, user_id: req.auth!.user_id, status: { $in: ['active', 'paused'] } },
+    {
+      $set: { status: 'ended', end_time: new Date(), summary: req.body.summary || {} },
+      $push: { events: { type: 'end', timestamp: new Date() } },
+    },
+    { new: true },
+  );
+  if (!session) throw new AppError('No active session found', 404);
+  res.json({ success: true });
+});
+
+// GET /api/sessions/active (admin)
+router.get('/active', requireRole('company_admin', 'sub_admin'), async (req, res) => {
+  const sessions = await Session.find({
+    company_id: req.auth!.company_id,
+    status: { $in: ['active', 'paused'] },
+  }).populate('user_id', 'name email');
+  res.json({ sessions });
+});
+
+// POST /api/sessions/:id/force-end (admin)
+router.post('/:id/force-end', requireRole('company_admin'), async (req, res) => {
+  const session = await Session.findOneAndUpdate(
+    { _id: req.params.id, company_id: req.auth!.company_id, status: { $in: ['active', 'paused'] } },
+    {
+      $set: { status: 'force_ended', end_time: new Date() },
+      $push: { events: { type: 'force_end', timestamp: new Date(), metadata: { reason: req.body.reason } } },
+    },
+    { new: true },
+  );
+  if (!session) throw new AppError('Session not found', 404);
+  res.json({ success: true });
+});
+
+export default router;
+```
+
+#### activity.routes.ts
+
+```typescript
+import { Router } from 'express';
+import { z } from 'zod';
+import { authenticate } from '../middleware/auth';
+import { enforceTenant } from '../middleware/tenantIsolation';
+import { requireRole } from '../middleware/roleGuard';
+import { validate } from '../middleware/validate';
+import { ActivityLog } from '../models/ActivityLog';
+
+const router = Router();
+router.use(authenticate, enforceTenant);
+
+const activityBatchSchema = z.object({
+  session_id: z.string(),
+  logs: z.array(z.object({
+    timestamp: z.string().datetime(),
+    interval_start: z.string().datetime(),
+    interval_end: z.string().datetime(),
+    keyboard_events: z.number().int().min(0),
+    mouse_events: z.number().int().min(0),
+    mouse_distance: z.number().min(0),
+    activity_score: z.number().min(0).max(100),
+    idle: z.boolean(),
+    active_window: z.object({
+      title: z.string(),
+      app_name: z.string(),
+      url: z.string().optional(),
+    }),
+  })).min(1).max(500),
+});
+
+// POST /api/agent/activity — batch upload
+router.post('/', validate(activityBatchSchema), async (req, res) => {
+  const docs = req.body.logs.map((log: any) => ({
+    ...log,
+    user_id: req.auth!.user_id,
+    company_id: req.auth!.company_id,
+    session_id: req.body.session_id,
+    timestamp: new Date(log.timestamp),
+    interval_start: new Date(log.interval_start),
+    interval_end: new Date(log.interval_end),
+  }));
+
+  await ActivityLog.insertMany(docs, { ordered: false });
+  res.json({ success: true, count: docs.length });
+});
+
+// POST /api/agent/heartbeat
+router.post('/heartbeat', async (req, res) => {
+  // Update last_seen, check for pending commands (force-logout, config change)
+  const commands: any[] = []; // fetch from Redis command queue
+  res.json({ commands });
+});
+
+// GET /api/activity/:userId/timeline (admin)
+router.get('/:userId/timeline', requireRole('company_admin', 'sub_admin'), async (req, res) => {
+  const { date, range } = req.query;
+  const start = new Date(date as string);
+  const end = new Date(start);
+  end.setDate(end.getDate() + (Number(range) || 1));
+
+  const timeline = await ActivityLog.find({
+    company_id: req.auth!.company_id,
+    user_id: req.params.userId,
+    timestamp: { $gte: start, $lt: end },
+  }).sort({ timestamp: 1 }).lean();
+
+  res.json({ timeline });
+});
+
+// GET /api/activity/:userId/summary (admin)
+router.get('/:userId/summary', requireRole('company_admin', 'sub_admin'), async (req, res) => {
+  const period = req.query.period === 'weekly' ? 7 : 1;
+  const start = new Date();
+  start.setDate(start.getDate() - period);
+
+  const summary = await ActivityLog.aggregate([
+    { $match: { company_id: req.auth!.company_id, user_id: req.params.userId, timestamp: { $gte: start } } },
+    {
+      $group: {
+        _id: null,
+        total_samples: { $sum: 1 },
+        avg_activity: { $avg: '$activity_score' },
+        total_keyboard: { $sum: '$keyboard_events' },
+        total_mouse: { $sum: '$mouse_events' },
+        idle_samples: { $sum: { $cond: ['$idle', 1, 0] } },
+      },
+    },
+  ]);
+
+  res.json({ summary: summary[0] || {} });
+});
+
+export default router;
+```
+
+#### screenshot.routes.ts
+
+```typescript
+import { Router } from 'express';
+import multer from 'multer';
+import { authenticate } from '../middleware/auth';
+import { enforceTenant } from '../middleware/tenantIsolation';
+import { requireRole } from '../middleware/roleGuard';
+import { Screenshot } from '../models/Screenshot';
+import { uploadToS3, getSignedDownloadUrl } from '../utils/s3';
+import { AppError } from '../utils/errors';
+
+const router = Router();
+router.use(authenticate, enforceTenant);
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+// POST /api/agent/screenshots — upload from agent
+router.post('/', upload.single('file'), async (req, res) => {
+  if (!req.file) throw new AppError('No file uploaded', 400);
+
+  const metadata = JSON.parse(req.body.metadata || '{}');
+  const key = `screenshots/${req.auth!.company_id}/${req.auth!.user_id}/${Date.now()}.webp`;
+
+  await uploadToS3(key, req.file.buffer, req.file.mimetype);
+
+  const screenshot = await Screenshot.create({
+    user_id: req.auth!.user_id,
+    company_id: req.auth!.company_id,
+    session_id: metadata.session_id,
+    timestamp: new Date(metadata.timestamp || Date.now()),
+    s3_key: key,
+    s3_bucket: process.env.AWS_S3_BUCKET,
+    file_size: req.file.size,
+    resolution: metadata.resolution || { width: 1920, height: 1080 },
+    monitor_id: metadata.monitor_id,
+    activity_score: metadata.activity_score || 0,
+    active_window: metadata.active_window || { title: '', app_name: '' },
+    blurred: metadata.blurred || false,
+  });
+
+  res.status(201).json({ success: true, id: screenshot._id });
+});
+
+// GET /api/screenshots/:userId (admin)
+router.get('/:userId', requireRole('company_admin', 'sub_admin'), async (req, res) => {
+  const page = Number(req.query.page) || 1;
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+
+  const [screenshots, total] = await Promise.all([
+    Screenshot.find({ company_id: req.auth!.company_id, user_id: req.params.userId })
+      .sort({ timestamp: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    Screenshot.countDocuments({ company_id: req.auth!.company_id, user_id: req.params.userId }),
+  ]);
+
+  res.json({ screenshots, total, page, limit });
+});
+
+// GET /api/screenshots/:id/url (admin) — signed download URL
+router.get('/:id/url', requireRole('company_admin', 'sub_admin'), async (req, res) => {
+  const screenshot = await Screenshot.findOne({ _id: req.params.id, company_id: req.auth!.company_id });
+  if (!screenshot) throw new AppError('Screenshot not found', 404);
+
+  const signedUrl = await getSignedDownloadUrl(screenshot.s3_key);
+  res.json({ signedUrl });
+});
+
+export default router;
+```
+
+#### admin.routes.ts
+
+```typescript
+import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
+import { enforceTenant } from '../middleware/tenantIsolation';
+import { requireRole } from '../middleware/roleGuard';
+import { User } from '../models/User';
+import { Session } from '../models/Session';
+import { Screenshot } from '../models/Screenshot';
+import { ActivityLog } from '../models/ActivityLog';
+import { Company } from '../models/Company';
+
+const router = Router();
+router.use(authenticate, enforceTenant, requireRole('company_admin'));
+
+// GET /api/admin/dashboard
+router.get('/dashboard', async (req, res) => {
+  const companyId = req.auth!.company_id;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [totalUsers, activeToday, activeSessions, screenshotsToday] = await Promise.all([
+    User.countDocuments({ company_id: companyId, status: 'active' }),
+    Session.distinct('user_id', { company_id: companyId, start_time: { $gte: today } }).then((ids) => ids.length),
+    Session.countDocuments({ company_id: companyId, status: { $in: ['active', 'paused'] } }),
+    Screenshot.countDocuments({ company_id: companyId, timestamp: { $gte: today } }),
+  ]);
+
+  const avgActivity = await ActivityLog.aggregate([
+    { $match: { company_id: companyId, timestamp: { $gte: today } } },
+    { $group: { _id: null, avg: { $avg: '$activity_score' } } },
+  ]);
+
+  res.json({
+    stats: {
+      totalUsers,
+      activeToday,
+      activeSessions,
+      screenshotsToday,
+      avgActivityScore: avgActivity[0]?.avg ?? 0,
+    },
+  });
+});
+
+// PUT /api/admin/monitoring-rules
+router.put('/monitoring-rules', async (req, res) => {
+  await Company.findByIdAndUpdate(req.auth!.company_id, { $set: { settings: req.body.rules } });
+  res.json({ success: true });
+});
+
+// POST /api/admin/invite
+router.post('/invite', async (req, res) => {
+  const { email, role } = req.body;
+  const inviteToken = require('crypto').randomBytes(32).toString('hex');
+
+  const user = await User.create({
+    company_id: req.auth!.company_id,
+    email,
+    password_hash: 'PENDING',
+    name: email.split('@')[0],
+    role: role || 'user',
+    status: 'invited',
+    invite_token: inviteToken,
+  });
+
+  // TODO: Send invite email via SES/SendGrid
+  res.status(201).json({ inviteId: user._id, inviteToken });
+});
+
+export default router;
+```
+
+---
+
+### WebSocket Service
+
+```typescript
+import { Server as HTTPServer } from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env';
+import { logger } from '../utils/logger';
+
+interface AuthenticatedSocket extends WebSocket {
+  auth?: { user_id: string; company_id: string; role: string };
+  isAlive?: boolean;
+}
+
+const companyRooms = new Map<string, Set<AuthenticatedSocket>>();
+
+export function initWebSocket(server: HTTPServer): void {
+  const wss = new WebSocketServer({ server, path: '/ws' });
+
+  wss.on('connection', (ws: AuthenticatedSocket, req) => {
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
+    const token = url.searchParams.get('token');
+
+    if (!token) { ws.close(4001, 'Missing token'); return; }
+
+    try {
+      const payload = jwt.verify(token, env.JWT_PUBLIC_KEY, { algorithms: ['RS256'] }) as any;
+      ws.auth = { user_id: payload.user_id, company_id: payload.company_id, role: payload.role };
+      ws.isAlive = true;
+
+      // Join company room
+      if (!companyRooms.has(payload.company_id)) companyRooms.set(payload.company_id, new Set());
+      companyRooms.get(payload.company_id)!.add(ws);
+
+      ws.on('pong', () => { ws.isAlive = true; });
+      ws.on('close', () => { companyRooms.get(payload.company_id)?.delete(ws); });
+
+      logger.info(`WS connected: user=${payload.user_id}`);
+    } catch {
+      ws.close(4003, 'Invalid token');
+    }
+  });
+
+  // Heartbeat every 30s
+  setInterval(() => {
+    wss.clients.forEach((ws: AuthenticatedSocket) => {
+      if (!ws.isAlive) { ws.terminate(); return; }
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30_000);
+}
+
+// Broadcast to all admin sockets in a company
+export function broadcastToCompany(companyId: string, event: string, data: unknown): void {
+  const room = companyRooms.get(companyId);
+  if (!room) return;
+  const message = JSON.stringify({ event, data, timestamp: new Date().toISOString() });
+  room.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN && ws.auth?.role !== 'user') {
+      ws.send(message);
+    }
+  });
+}
+```
+
+---
+
+### App Entry Point
+
+#### app.ts
+
+```typescript
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import { env } from './config/env';
+import { apiLimiter } from './middleware/rateLimiter';
+import { errorHandler } from './middleware/errorHandler';
+import authRoutes from './routes/auth.routes';
+import sessionRoutes from './routes/session.routes';
+import activityRoutes from './routes/activity.routes';
+import screenshotRoutes from './routes/screenshot.routes';
+import adminRoutes from './routes/admin.routes';
+
+const app = express();
+
+// Security
+app.use(helmet());
+app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(apiLimiter);
+
+// Health check
+app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/sessions', sessionRoutes);
+app.use('/api/agent/activity', activityRoutes);
+app.use('/api/agent/screenshots', screenshotRoutes);
+app.use('/api/admin', adminRoutes);
+
+// Error handler (must be last)
+app.use(errorHandler);
+
+export default app;
+```
+
+#### index.ts
+
+```typescript
+import app from './app';
+import { env } from './config/env';
+import { connectDatabase } from './config/database';
+import { connectRedis } from './config/redis';
+import { initWebSocket } from './services/websocket.service';
+import { logger } from './utils/logger';
+import http from 'http';
+
+async function bootstrap(): Promise<void> {
+  await connectDatabase();
+  await connectRedis();
+
+  const server = http.createServer(app);
+  initWebSocket(server);
+
+  server.listen(env.PORT, () => {
+    logger.info(`Server running on port ${env.PORT} [${env.NODE_ENV}]`);
+  });
+
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM received, shutting down...');
+    server.close(() => process.exit(0));
+  });
+}
+
+bootstrap().catch((err) => {
+  logger.error('Bootstrap failed', err);
+  process.exit(1);
+});
+```
+
+---
+
+### Dockerfile
+
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+EXPOSE 4000
+USER node
+CMD ["node", "dist/index.js"]
+```
