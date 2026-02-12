@@ -1694,3 +1694,1345 @@ Windows has no special permissions for screen capture. The `desktopCapturer` API
 - **DPI scaling**: `scaleFactor` used to capture at native resolution
 - **Multi-monitor**: Primary display captured by default; extend config for all displays
 - **UAC**: NSIS installer configured with `perMachine: true` for proper installation
+
+---
+
+## 🖥️ Multi-Monitor Screenshot Support
+
+### Updated `src/config/capture-config.json` — Monitor Selection
+
+Add to the existing config:
+
+```json
+{
+  "monitors": {
+    "captureMode": "all",
+    "allowedDisplayIds": [],
+    "stitchMode": "individual",
+    "labelDisplayId": true
+  }
+}
+```
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `captureMode` | `"all"` / `"primary"` / `"selected"` | Which monitors to capture |
+| `allowedDisplayIds` | `string[]` | Only used when `captureMode: "selected"` |
+| `stitchMode` | `"individual"` / `"combined"` | Upload separate images or one stitched panorama |
+| `labelDisplayId` | `boolean` | Embed display identifier in metadata |
+
+---
+
+### 21. `src/services/multi-monitor.service.ts` — Display Manager
+
+```typescript
+import { screen, desktopCapturer, Display } from 'electron';
+import log from 'electron-log';
+import { imageOptimizer } from './image-optimizer.service';
+import { encryptionService } from './encryption.service';
+import { uploadQueueWorker } from '../workers/upload-queue.worker';
+import path from 'path';
+import { app } from 'electron';
+
+interface MonitorConfig {
+  captureMode: 'all' | 'primary' | 'selected';
+  allowedDisplayIds: string[];
+  stitchMode: 'individual' | 'combined';
+  labelDisplayId: boolean;
+}
+
+interface DisplayCapture {
+  displayId: string;
+  label: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  buffer: Buffer;
+  scaleFactor: number;
+}
+
+class MultiMonitorService {
+  private config: MonitorConfig = {
+    captureMode: 'all',
+    allowedDisplayIds: [],
+    stitchMode: 'individual',
+    labelDisplayId: true,
+  };
+
+  configure(config: Partial<MonitorConfig>): void {
+    this.config = { ...this.config, ...config };
+    log.info(`Monitor config updated: mode=${this.config.captureMode}, stitch=${this.config.stitchMode}`);
+  }
+
+  getDisplays(): Array<{ id: string; label: string; bounds: Display['bounds']; isPrimary: boolean; scaleFactor: number }> {
+    const primary = screen.getPrimaryDisplay();
+    return screen.getAllDisplays().map((d, i) => ({
+      id: d.id.toString(),
+      label: `Display ${i + 1}${d.id === primary.id ? ' (Primary)' : ''}`,
+      bounds: d.bounds,
+      isPrimary: d.id === primary.id,
+      scaleFactor: d.scaleFactor,
+    }));
+  }
+
+  private getTargetDisplays(): Display[] {
+    const allDisplays = screen.getAllDisplays();
+    const primary = screen.getPrimaryDisplay();
+
+    switch (this.config.captureMode) {
+      case 'primary':
+        return [primary];
+      case 'selected':
+        return allDisplays.filter(d =>
+          this.config.allowedDisplayIds.includes(d.id.toString())
+        );
+      case 'all':
+      default:
+        return allDisplays;
+    }
+  }
+
+  async captureAllDisplays(imageConfig: { format: string; quality: number; maxWidth: number; maxHeight: number }): Promise<DisplayCapture[]> {
+    const targets = this.getTargetDisplays();
+    const captures: DisplayCapture[] = [];
+
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: {
+          width: 3840, // Request max, actual size determined per display
+          height: 2160,
+        },
+      });
+
+      for (const display of targets) {
+        // Match source to display by checking bounds overlap
+        const matchedSource = sources.find(src => {
+          // Electron names screen sources as "Screen 1", "Screen 2", etc.
+          // Match by index or display ID embedded in source id
+          return src.display_id === display.id.toString();
+        }) || sources[targets.indexOf(display)]; // Fallback: positional match
+
+        if (!matchedSource) {
+          log.warn(`No source found for display ${display.id}`);
+          continue;
+        }
+
+        const rawBuffer = matchedSource.thumbnail.toPNG();
+
+        // Validate before processing
+        const isValid = await imageOptimizer.validateImage(rawBuffer);
+        if (!isValid) {
+          log.error(`Corrupted capture for display ${display.id}`);
+          continue;
+        }
+
+        // Optimize per-display
+        const optimized = await imageOptimizer.optimize(rawBuffer, {
+          format: imageConfig.format as any,
+          quality: imageConfig.quality,
+          maxWidth: imageConfig.maxWidth,
+          maxHeight: imageConfig.maxHeight,
+        });
+
+        captures.push({
+          displayId: display.id.toString(),
+          label: `Display ${targets.indexOf(display) + 1}`,
+          bounds: display.bounds,
+          buffer: optimized,
+          scaleFactor: display.scaleFactor,
+        });
+      }
+
+      log.info(`Captured ${captures.length}/${targets.length} displays`);
+      return captures;
+    } catch (error) {
+      log.error('Multi-monitor capture failed:', error);
+      return [];
+    }
+  }
+
+  async captureAndQueue(
+    imageConfig: { format: string; quality: number; maxWidth: number; maxHeight: number },
+    tempDir: string
+  ): Promise<number> {
+    const captures = await this.captureAllDisplays(imageConfig);
+    let queued = 0;
+
+    for (const capture of captures) {
+      const captureId = `ss_${Date.now()}_d${capture.displayId}_${Math.random().toString(36).slice(2, 6)}`;
+      const encryptedPath = path.join(tempDir, `${captureId}.enc`);
+
+      await encryptionService.encryptAndSave(capture.buffer, encryptedPath);
+
+      uploadQueueWorker.enqueue({
+        id: captureId,
+        encryptedPath,
+        timestamp: new Date().toISOString(),
+        optimizedSize: capture.buffer.length,
+        displayId: capture.displayId,
+      });
+
+      queued++;
+    }
+
+    return queued;
+  }
+}
+
+export const multiMonitorService = new MultiMonitorService();
+```
+
+### IPC Handlers for Monitor Config
+
+```typescript
+// Add to ipc-handlers.ts
+
+ipcMain.handle('monitors:getDisplays', async () => {
+  return multiMonitorService.getDisplays();
+});
+
+ipcMain.handle('monitors:configure', async (_event, config: any) => {
+  multiMonitorService.configure(config);
+  return { success: true };
+});
+```
+
+### Preload API Extension
+
+```typescript
+// Add to preload/index.ts
+getDisplays: () => ipcRenderer.invoke('monitors:getDisplays'),
+configureMonitors: (config: any) => ipcRenderer.invoke('monitors:configure'),
+```
+
+---
+
+## 🔍 Activity Tracking System
+
+### Extended Folder Structure
+
+```
+teamtreck-agent/
+├── src/
+│   ├── services/
+│   │   ├── activity-tracker.service.ts   # Core tracking engine
+│   │   ├── window-tracker.service.ts     # Active window detection
+│   │   └── input-monitor.service.ts      # Keyboard/mouse activity (privacy-safe)
+│   ├── workers/
+│   │   └── activity-sync.worker.ts       # Batch upload every 2 min
+│   └── config/
+│       └── tracking-config.json          # Privacy & tracking settings
+```
+
+---
+
+### 22. `src/config/tracking-config.json` — Privacy-Safe Defaults
+
+```json
+{
+  "tracking": {
+    "sampleIntervalMs": 10000,
+    "idleThresholdMinutes": 5,
+    "batchUploadIntervalMs": 120000,
+    "maxBatchSize": 200
+  },
+  "inputMonitoring": {
+    "trackKeyboardActivity": true,
+    "trackMouseActivity": true,
+    "logKeystrokeCounts": true,
+    "logKeystrokeContent": false,
+    "logMouseClicks": true,
+    "logMouseMovement": false
+  },
+  "windowTracking": {
+    "enabled": true,
+    "captureWindowTitle": true,
+    "captureAppName": true,
+    "captureUrl": true,
+    "sensitiveAppBlacklist": [
+      "1Password", "KeePass", "Bitwarden",
+      "System Preferences", "Settings"
+    ]
+  },
+  "privacy": {
+    "anonymizeSensitiveApps": true,
+    "stripUrlParams": true,
+    "maskWindowTitles": false,
+    "gdprCompliant": true
+  }
+}
+```
+
+---
+
+### 23. `src/services/activity-tracker.service.ts` — Core Tracking Engine
+
+```typescript
+import { powerMonitor } from 'electron';
+import { BrowserWindow } from 'electron';
+import ElectronStore from 'electron-store';
+import log from 'electron-log';
+import { windowTracker } from './window-tracker.service';
+import { inputMonitor } from './input-monitor.service';
+
+const trackingConfig = require('../config/tracking-config.json');
+
+// ─── Data Schema ───
+
+interface ActivitySample {
+  timestamp: string;
+  status: 'active' | 'idle';
+  idleSeconds: number;
+  activeWindow: {
+    title: string;
+    appName: string;
+    url?: string;
+  } | null;
+  input: {
+    keystrokes: number;
+    mouseClicks: number;
+    mouseDistance: number;
+  };
+  systemInfo: {
+    cpuUsage: number;
+    memoryUsage: number;
+  };
+}
+
+interface ActivityBatch {
+  batchId: string;
+  userId: string;
+  deviceId: string;
+  sessionId: string;
+  startTime: string;
+  endTime: string;
+  samples: ActivitySample[];
+  summary: {
+    totalActiveSeconds: number;
+    totalIdleSeconds: number;
+    topApps: Array<{ name: string; seconds: number }>;
+    productivityScore: number;
+  };
+}
+
+const store = new ElectronStore({ name: 'activity-buffer' });
+
+class ActivityTrackerService {
+  private sampleInterval: NodeJS.Timeout | null = null;
+  private buffer: ActivitySample[] = [];
+  private isTracking = false;
+  private sessionId: string | null = null;
+  private userId: string | null = null;
+  private deviceId: string | null = null;
+  private lastIdleState: boolean = false;
+  private config = trackingConfig;
+  private activeSeconds = 0;
+  private idleSeconds = 0;
+  private appUsageMap = new Map<string, number>();
+
+  initialize(userId: string, deviceId: string): void {
+    this.userId = userId;
+    this.deviceId = deviceId;
+
+    // Restore unsent buffer from previous crash
+    const savedBuffer = store.get('unsent-samples') as ActivitySample[] | undefined;
+    if (savedBuffer && savedBuffer.length > 0) {
+      this.buffer = savedBuffer;
+      log.info(`Restored ${savedBuffer.length} unsent activity samples`);
+    }
+  }
+
+  start(sessionId: string): void {
+    if (this.isTracking) return;
+
+    this.sessionId = sessionId;
+    this.isTracking = true;
+    this.activeSeconds = 0;
+    this.idleSeconds = 0;
+    this.appUsageMap.clear();
+
+    // Start sub-services
+    inputMonitor.start(this.config.inputMonitoring);
+
+    // Sample every N seconds
+    this.sampleInterval = setInterval(
+      () => this.collectSample(),
+      this.config.tracking.sampleIntervalMs
+    );
+
+    log.info(`Activity tracking started (session: ${sessionId})`);
+  }
+
+  stop(): void {
+    this.isTracking = false;
+
+    if (this.sampleInterval) {
+      clearInterval(this.sampleInterval);
+      this.sampleInterval = null;
+    }
+
+    inputMonitor.stop();
+
+    // Persist unsent samples
+    if (this.buffer.length > 0) {
+      store.set('unsent-samples', this.buffer);
+      log.info(`Persisted ${this.buffer.length} unsent samples`);
+    }
+
+    log.info('Activity tracking stopped');
+  }
+
+  private async collectSample(): Promise<void> {
+    try {
+      const idleTime = powerMonitor.getSystemIdleTime(); // seconds
+      const isIdle = idleTime >= this.config.tracking.idleThresholdMinutes * 60;
+      const sampleSeconds = this.config.tracking.sampleIntervalMs / 1000;
+
+      // Track active/idle time
+      if (isIdle) {
+        this.idleSeconds += sampleSeconds;
+      } else {
+        this.activeSeconds += sampleSeconds;
+      }
+
+      // Notify renderer on idle state change
+      if (isIdle !== this.lastIdleState) {
+        this.lastIdleState = isIdle;
+        const win = BrowserWindow.getAllWindows()[0];
+        if (win) {
+          win.webContents.send('idle-state-changed', { isIdle, idleSeconds: idleTime });
+        }
+      }
+
+      // Get active window info
+      let activeWindow = null;
+      if (this.config.windowTracking.enabled) {
+        activeWindow = await windowTracker.getActiveWindow(this.config);
+      }
+
+      // Track app usage duration
+      if (activeWindow && !isIdle) {
+        const appName = activeWindow.appName;
+        this.appUsageMap.set(appName, (this.appUsageMap.get(appName) || 0) + sampleSeconds);
+      }
+
+      // Get input metrics and reset counters
+      const inputMetrics = inputMonitor.getAndReset();
+
+      // Build sample
+      const sample: ActivitySample = {
+        timestamp: new Date().toISOString(),
+        status: isIdle ? 'idle' : 'active',
+        idleSeconds: idleTime,
+        activeWindow,
+        input: {
+          keystrokes: inputMetrics.keystrokes,
+          mouseClicks: inputMetrics.mouseClicks,
+          mouseDistance: inputMetrics.mouseDistance,
+        },
+        systemInfo: {
+          cpuUsage: process.cpuUsage().user / 1000000, // μs → s
+          memoryUsage: process.memoryUsage().heapUsed / (1024 * 1024), // MB
+        },
+      };
+
+      this.buffer.push(sample);
+
+      // Periodic persistence (every 30 samples)
+      if (this.buffer.length % 30 === 0) {
+        store.set('unsent-samples', this.buffer);
+      }
+
+    } catch (error) {
+      log.error('Activity sample collection failed:', error);
+    }
+  }
+
+  flushBatch(): ActivityBatch | null {
+    if (this.buffer.length === 0 || !this.sessionId || !this.userId || !this.deviceId) {
+      return null;
+    }
+
+    const samples = this.buffer.splice(0, this.config.tracking.maxBatchSize);
+    store.set('unsent-samples', this.buffer); // Persist remaining
+
+    // Calculate top apps
+    const topApps = Array.from(this.appUsageMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, seconds]) => ({ name, seconds }));
+
+    const totalTracked = this.activeSeconds + this.idleSeconds;
+    const productivityScore = totalTracked > 0
+      ? Math.round((this.activeSeconds / totalTracked) * 100)
+      : 0;
+
+    const batch: ActivityBatch = {
+      batchId: `batch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      userId: this.userId,
+      deviceId: this.deviceId,
+      sessionId: this.sessionId,
+      startTime: samples[0].timestamp,
+      endTime: samples[samples.length - 1].timestamp,
+      samples,
+      summary: {
+        totalActiveSeconds: this.activeSeconds,
+        totalIdleSeconds: this.idleSeconds,
+        topApps,
+        productivityScore,
+      },
+    };
+
+    log.info(`Flushed batch: ${samples.length} samples, productivity: ${productivityScore}%`);
+    return batch;
+  }
+
+  getRealtimeStats() {
+    return {
+      isTracking: this.isTracking,
+      bufferedSamples: this.buffer.length,
+      activeSeconds: this.activeSeconds,
+      idleSeconds: this.idleSeconds,
+      productivityScore: this.activeSeconds + this.idleSeconds > 0
+        ? Math.round((this.activeSeconds / (this.activeSeconds + this.idleSeconds)) * 100)
+        : 0,
+    };
+  }
+}
+
+export const activityTracker = new ActivityTrackerService();
+```
+
+---
+
+### 24. `src/services/window-tracker.service.ts` — Active Window Detection
+
+```typescript
+import log from 'electron-log';
+
+interface WindowInfo {
+  title: string;
+  appName: string;
+  url?: string;
+}
+
+class WindowTrackerService {
+  private activeWindowLib: any = null;
+
+  constructor() {
+    // Use @prsm/active-win or active-win for cross-platform active window detection
+    try {
+      this.activeWindowLib = require('@prsm/active-win');
+    } catch {
+      try {
+        this.activeWindowLib = require('active-win');
+      } catch {
+        log.warn('No active-window library found — window tracking disabled');
+      }
+    }
+  }
+
+  async getActiveWindow(config: any): Promise<WindowInfo | null> {
+    if (!this.activeWindowLib) return null;
+
+    try {
+      const win = await this.activeWindowLib.activeWindow();
+      if (!win) return null;
+
+      const appName = win.owner?.name || win.app || 'Unknown';
+      let title = config.windowTracking.captureWindowTitle ? (win.title || '') : '[redacted]';
+      let url: string | undefined;
+
+      // Privacy: Check sensitive app blacklist
+      if (config.privacy.anonymizeSensitiveApps) {
+        const blacklist: string[] = config.windowTracking.sensitiveAppBlacklist || [];
+        if (blacklist.some(b => appName.toLowerCase().includes(b.toLowerCase()))) {
+          return {
+            title: '[sensitive app]',
+            appName: '[redacted]',
+            url: undefined,
+          };
+        }
+      }
+
+      // Privacy: Mask window titles if configured
+      if (config.privacy.maskWindowTitles) {
+        title = title.replace(/[a-zA-Z0-9]/g, '*');
+      }
+
+      // Extract URL from browser windows
+      if (config.windowTracking.captureUrl) {
+        const browserApps = ['chrome', 'firefox', 'safari', 'edge', 'brave', 'opera', 'arc'];
+        if (browserApps.some(b => appName.toLowerCase().includes(b))) {
+          url = this.extractUrlFromTitle(title);
+          if (url && config.privacy.stripUrlParams) {
+            url = url.split('?')[0].split('#')[0]; // Remove query params
+          }
+        }
+      }
+
+      return { title, appName, url };
+    } catch (error) {
+      log.error('Active window detection failed:', error);
+      return null;
+    }
+  }
+
+  private extractUrlFromTitle(title: string): string | undefined {
+    // Browser titles often contain the URL or domain
+    // Format: "Page Title - Browser" or "domain.com - Page Title"
+    const urlPattern = /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)/;
+    const match = title.match(urlPattern);
+    return match ? match[0] : undefined;
+  }
+}
+
+export const windowTracker = new WindowTrackerService();
+```
+
+---
+
+### 25. `src/services/input-monitor.service.ts` — Privacy-Safe Input Tracking
+
+```typescript
+import { globalShortcut } from 'electron';
+import log from 'electron-log';
+
+// Uses uiohook-napi for native input monitoring without keystroke logging
+// npm install uiohook-napi
+
+interface InputMetrics {
+  keystrokes: number;
+  mouseClicks: number;
+  mouseDistance: number;
+}
+
+interface InputConfig {
+  trackKeyboardActivity: boolean;
+  trackMouseActivity: boolean;
+  logKeystrokeCounts: boolean;
+  logKeystrokeContent: boolean; // NEVER enable unless explicit admin config
+  logMouseClicks: boolean;
+  logMouseMovement: boolean;
+}
+
+class InputMonitorService {
+  private keystrokes = 0;
+  private mouseClicks = 0;
+  private mouseDistance = 0;
+  private lastMousePos = { x: 0, y: 0 };
+  private hook: any = null;
+  private config: InputConfig | null = null;
+
+  start(config: InputConfig): void {
+    this.config = config;
+    this.reset();
+
+    try {
+      const { uIOhook, UiohookKey } = require('uiohook-napi');
+      this.hook = uIOhook;
+
+      if (config.trackKeyboardActivity && config.logKeystrokeCounts) {
+        uIOhook.on('keydown', () => {
+          this.keystrokes++;
+          // PRIVACY: Only count, NEVER log actual key values
+          // config.logKeystrokeContent is intentionally NOT implemented here
+        });
+      }
+
+      if (config.trackMouseActivity) {
+        if (config.logMouseClicks) {
+          uIOhook.on('click', () => {
+            this.mouseClicks++;
+          });
+        }
+
+        if (config.logMouseMovement) {
+          uIOhook.on('mousemove', (e: { x: number; y: number }) => {
+            const dx = e.x - this.lastMousePos.x;
+            const dy = e.y - this.lastMousePos.y;
+            this.mouseDistance += Math.sqrt(dx * dx + dy * dy);
+            this.lastMousePos = { x: e.x, y: e.y };
+          });
+        }
+      }
+
+      uIOhook.start();
+      log.info('Input monitoring started (privacy-safe mode)');
+    } catch (error) {
+      log.warn('uiohook-napi not available — input monitoring disabled:', error);
+      // Fallback: use powerMonitor idle time as proxy for activity
+    }
+  }
+
+  stop(): void {
+    if (this.hook) {
+      try {
+        this.hook.stop();
+      } catch {}
+      this.hook = null;
+    }
+    log.info('Input monitoring stopped');
+  }
+
+  getAndReset(): InputMetrics {
+    const metrics = {
+      keystrokes: this.keystrokes,
+      mouseClicks: this.mouseClicks,
+      mouseDistance: Math.round(this.mouseDistance),
+    };
+    this.reset();
+    return metrics;
+  }
+
+  private reset(): void {
+    this.keystrokes = 0;
+    this.mouseClicks = 0;
+    this.mouseDistance = 0;
+  }
+}
+
+export const inputMonitor = new InputMonitorService();
+```
+
+---
+
+### 26. `src/workers/activity-sync.worker.ts` — Batch Upload Worker
+
+```typescript
+import axios from 'axios';
+import log from 'electron-log';
+import { activityTracker } from '../services/activity-tracker.service';
+import { authService } from '../services/auth.service';
+import ElectronStore from 'electron-store';
+
+const API_BASE = 'https://api.teamtreck.com';
+const SYNC_INTERVAL = 120000; // 2 minutes
+const failedStore = new ElectronStore({ name: 'failed-activity-batches' });
+
+class ActivitySyncWorker {
+  private intervalId: NodeJS.Timeout | null = null;
+  private isOnline = true;
+
+  start(): void {
+    // Check connectivity
+    if (typeof process !== 'undefined') {
+      const { net } = require('electron');
+      setInterval(() => { this.isOnline = net.isOnline(); }, 10000);
+    }
+
+    this.intervalId = setInterval(() => this.sync(), SYNC_INTERVAL);
+    log.info('Activity sync worker started (interval: 2min)');
+  }
+
+  stop(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    // Final flush
+    this.sync();
+    log.info('Activity sync worker stopped');
+  }
+
+  private async sync(): Promise<void> {
+    // 1. Flush current buffer
+    const batch = activityTracker.flushBatch();
+    if (!batch && this.getFailedQueue().length === 0) return;
+
+    const token = await authService.getToken();
+    if (!token) {
+      if (batch) this.enqueueFailed(batch);
+      return;
+    }
+
+    if (!this.isOnline) {
+      if (batch) this.enqueueFailed(batch);
+      log.info('Offline — activity batch queued');
+      return;
+    }
+
+    // 2. Upload current batch
+    if (batch) {
+      const success = await this.uploadBatch(batch, token);
+      if (!success) this.enqueueFailed(batch);
+    }
+
+    // 3. Retry failed batches
+    await this.retryFailed(token);
+  }
+
+  private async uploadBatch(batch: any, token: string): Promise<boolean> {
+    try {
+      await axios.post(`${API_BASE}/api/agent/activity`, batch, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        timeout: 15000,
+        maxBodyLength: 5 * 1024 * 1024, // 5MB max
+      });
+      log.info(`Activity batch uploaded: ${batch.batchId} (${batch.samples.length} samples)`);
+      return true;
+    } catch (error: any) {
+      log.warn(`Activity upload failed: ${error.response?.status || error.code}`);
+      return false;
+    }
+  }
+
+  private getFailedQueue(): any[] {
+    return (failedStore.get('queue') as any[]) || [];
+  }
+
+  private enqueueFailed(batch: any): void {
+    const queue = this.getFailedQueue();
+    queue.push({ ...batch, failedAt: Date.now(), retries: 0 });
+    // Keep max 50 failed batches
+    if (queue.length > 50) queue.splice(0, queue.length - 50);
+    failedStore.set('queue', queue);
+  }
+
+  private async retryFailed(token: string): Promise<void> {
+    const queue = this.getFailedQueue();
+    if (queue.length === 0) return;
+
+    const remaining: any[] = [];
+    for (const batch of queue) {
+      const success = await this.uploadBatch(batch, token);
+      if (!success) {
+        batch.retries = (batch.retries || 0) + 1;
+        if (batch.retries < 10) remaining.push(batch);
+        else log.error(`Dropping batch ${batch.batchId} after 10 retries`);
+      }
+    }
+    failedStore.set('queue', remaining);
+  }
+}
+
+export const activitySyncWorker = new ActivitySyncWorker();
+```
+
+---
+
+### IPC Handlers for Activity Tracking
+
+```typescript
+// Add to ipc-handlers.ts
+
+ipcMain.handle('activity:getStats', async () => {
+  return activityTracker.getRealtimeStats();
+});
+
+ipcMain.handle('activity:getConfig', async () => {
+  return require('../config/tracking-config.json');
+});
+```
+
+### Preload API Extensions
+
+```typescript
+// Add to preload/index.ts
+getActivityStats: () => ipcRenderer.invoke('activity:getStats'),
+getTrackingConfig: () => ipcRenderer.invoke('activity:getConfig'),
+onIdleStateChanged: (callback: (data: { isIdle: boolean; idleSeconds: number }) => void) => {
+  ipcRenderer.on('idle-state-changed', (_event, data) => callback(data));
+  return () => ipcRenderer.removeListener('idle-state-changed', () => {});
+},
+```
+
+### Package Dependencies for Activity Tracking
+
+```json
+{
+  "dependencies": {
+    "uiohook-napi": "^1.5.0",
+    "@prsm/active-win": "^1.0.0"
+  }
+}
+```
+
+> **Note:** `uiohook-napi` requires `@electron/rebuild`:
+> ```bash
+> npx @electron/rebuild -m node_modules/uiohook-napi
+> ```
+
+---
+
+## 🏗️ Full SaaS Architecture — TeamTreck Platform
+
+### System Architecture (10,000 Users)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        CLIENTS                                      │
+│                                                                     │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐            │
+│  │   Electron    │   │  React Web   │   │   Mobile     │            │
+│  │   Desktop     │   │  Dashboard   │   │   (Future)   │            │
+│  │   Agent       │   │  (Admin)     │   │              │            │
+│  └──────┬───────┘   └──────┬───────┘   └──────┬───────┘            │
+│         │                  │                   │                     │
+└─────────┼──────────────────┼───────────────────┼────────────────────┘
+          │                  │                   │
+          │ HTTPS/WSS        │ HTTPS             │ HTTPS
+          ▼                  ▼                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    LOAD BALANCER (AWS ALB)                          │
+│                    ├── Health checks                                │
+│                    ├── SSL termination                              │
+│                    └── Rate limiting (100 req/min per IP)           │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          ▼                    ▼                    ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│  API Server #1   │ │  API Server #2   │ │  API Server #N   │
+│  (Node.js)       │ │  (Node.js)       │ │  (Node.js)       │
+│  Express/Fastify │ │  Express/Fastify │ │  Express/Fastify │
+│  PM2 Cluster     │ │  PM2 Cluster     │ │  PM2 Cluster     │
+└────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘
+         │                    │                     │
+         └────────────────────┼─────────────────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│   MongoDB        │ │   Redis          │ │   AWS S3         │
+│   Atlas M30+     │ │   ElastiCache    │ │                  │
+│                  │ │                  │ │   Screenshots    │
+│   ├── users      │ │   ├── sessions   │ │   ├── raw/       │
+│   ├── sessions   │ │   ├── tokens     │ │   ├── optimized/ │
+│   ├── activities │ │   ├── cache      │ │   └── exports/   │
+│   ├── screenshots│ │   └── pub/sub    │ │                  │
+│   └── companies  │ │                  │ │   CDN: CloudFront│
+└──────────────────┘ └──────────────────┘ └──────────────────┘
+                              │
+                    ┌─────────┴──────────┐
+                    ▼                    ▼
+          ┌──────────────────┐ ┌──────────────────┐
+          │  Bull MQ Workers │ │  Cron Jobs        │
+          │                  │ │                    │
+          │  ├── screenshot  │ │  ├── report gen    │
+          │  │   processing  │ │  ├── data cleanup  │
+          │  ├── activity    │ │  ├── 90-day purge  │
+          │  │   aggregation │ │  └── billing cycle  │
+          │  └── alert       │ │                    │
+          │     notifications│ └──────────────────┘
+          └──────────────────┘
+```
+
+---
+
+### Data Flow Diagrams
+
+#### Authentication Flow
+
+```
+Electron Agent                API Server               MongoDB          Redis
+     │                            │                       │               │
+     ├── POST /api/auth/login ───►│                       │               │
+     │   {email, password}        │                       │               │
+     │                            ├── findUser() ────────►│               │
+     │                            │◄── user doc ──────────┤               │
+     │                            │                       │               │
+     │                            ├── bcrypt.compare() ──►│               │
+     │                            │                       │               │
+     │                            ├── jwt.sign({          │               │
+     │                            │     user_id,          │               │
+     │                            │     role,             │               │
+     │                            │     company_id,       │               │
+     │                            │     device_id         │               │
+     │                            │   })                  │               │
+     │                            │                       │               │
+     │                            ├── SET session ────────┼──────────────►│
+     │                            │   (TTL: 24h)          │               │
+     │                            │                       │               │
+     │◄── { token, user,          │                       │               │
+     │      monitoring_rules } ───┤                       │               │
+     │                            │                       │               │
+     ├── [Store in OS Keychain]   │                       │               │
+```
+
+#### Monitoring Flow
+
+```
+Electron Agent                         API Server                MongoDB
+     │                                      │                       │
+     ├── POST /api/sessions/start ─────────►│                       │
+     │   { device_id, timestamp }           │                       │
+     │                                      ├── createSession() ───►│
+     │◄── { session_id } ──────────────────┤                       │
+     │                                      │                       │
+     │  [Every 10s: collect sample]         │                       │
+     │  [Every 5min: capture screenshot]    │                       │
+     │                                      │                       │
+     ├── POST /api/agent/activity ─────────►│   (every 2 min)      │
+     │   { batch of samples }               │                       │
+     │                                      ├── bulkInsert() ──────►│
+     │                                      │                       │
+     ├── POST /api/agent/heartbeat ────────►│   (every 30s)        │
+     │   { status, timestamp }              │                       │
+     │                                      ├── updateSession() ───►│
+```
+
+#### Screenshot Upload Flow
+
+```
+Agent                       API Server              S3              MongoDB
+  │                              │                    │                │
+  │ [Capture → Optimize → Encrypt locally]            │                │
+  │                              │                    │                │
+  ├── POST /api/agent/screenshots ►│                  │                │
+  │   multipart/form-data         │                   │                │
+  │   {file, timestamp, captureId}│                   │                │
+  │                               │                   │                │
+  │                               ├── Upload ────────►│                │
+  │                               │   s3.putObject()  │                │
+  │                               │◄── {key, url} ────┤                │
+  │                               │                   │                │
+  │                               ├── Insert ─────────┼───────────────►│
+  │                               │   {s3_key, url,   │                │
+  │                               │    metadata}      │                │
+  │                               │                   │                │
+  │◄── { success: true } ────────┤                   │                │
+  │                               │                   │                │
+  │ [Delete local encrypted file] │                   │                │
+```
+
+---
+
+### Database Schemas (MongoDB)
+
+#### Company Schema
+
+```javascript
+// companies collection
+{
+  _id: ObjectId,
+  name: String,                    // "Acme Corp"
+  slug: String,                    // "acme-corp" (unique)
+  plan: {
+    type: String,                  // "starter" | "business" | "enterprise"
+    maxUsers: Number,              // 50, 200, unlimited
+    features: [String],            // ["screenshots", "url_tracking", "reports"]
+  },
+  monitoringRules: {
+    screenshotsPerHour: Number,    // 1-30
+    idleThresholdMinutes: Number,  // 1-30
+    privacyBlur: Boolean,
+    trackUrls: Boolean,
+    trackApps: Boolean,
+    blockedApps: [String],
+    blockedUrls: [String],
+    allowedApps: [String],
+    workingHours: {
+      start: String,               // "09:00"
+      end: String,                 // "18:00"
+      timezone: String,            // "Asia/Kolkata"
+    },
+  },
+  billing: {
+    stripeCustomerId: String,
+    currentPeriodEnd: Date,
+    status: String,                // "active" | "past_due" | "cancelled"
+  },
+  settings: {
+    dataRetentionDays: Number,     // default: 90
+    exportEnabled: Boolean,
+  },
+  createdAt: Date,
+  updatedAt: Date,
+}
+
+// Index: { slug: 1 } unique
+```
+
+#### User Schema
+
+```javascript
+// users collection
+{
+  _id: ObjectId,
+  company_id: ObjectId,           // FK → companies
+  email: String,                   // unique per company
+  passwordHash: String,           // bcrypt
+  role: String,                    // "company_admin" | "sub_admin" | "user"
+  profile: {
+    firstName: String,
+    lastName: String,
+    department: String,
+    designation: String,
+    avatar: String,                // S3 URL
+  },
+  devices: [{
+    deviceId: String,              // UUID bound on first login
+    platform: String,              // "win32" | "darwin" | "linux"
+    hostname: String,
+    lastSeen: Date,
+    agentVersion: String,          // "2.1.0"
+  }],
+  status: String,                  // "active" | "suspended" | "invited"
+  invitedBy: ObjectId,
+  lastLogin: Date,
+  createdAt: Date,
+  updatedAt: Date,
+}
+
+// Indexes:
+// { company_id: 1, email: 1 } unique compound
+// { company_id: 1, role: 1 }
+// { status: 1 }
+```
+
+#### Session Schema
+
+```javascript
+// sessions collection
+{
+  _id: ObjectId,
+  user_id: ObjectId,              // FK → users
+  company_id: ObjectId,           // FK → companies (denormalized for query perf)
+  device_id: String,
+  startTime: Date,
+  endTime: Date | null,           // null = active session
+  status: String,                  // "active" | "paused" | "ended" | "force_ended"
+  timeline: [{
+    event: String,                 // "start" | "pause" | "resume" | "idle" | "active" | "end"
+    timestamp: Date,
+    metadata: Object,              // { reason: "admin_force_logout", idleSeconds: 300 }
+  }],
+  summary: {
+    totalActiveSeconds: Number,
+    totalPausedSeconds: Number,
+    totalIdleSeconds: Number,
+    screenshotCount: Number,
+    productivityScore: Number,     // 0-100
+    topApps: [{
+      name: String,
+      seconds: Number,
+      category: String,            // "productive" | "neutral" | "unproductive"
+    }],
+  },
+  createdAt: Date,
+}
+
+// Indexes:
+// { user_id: 1, startTime: -1 }
+// { company_id: 1, startTime: -1 }
+// { status: 1, company_id: 1 }
+// TTL: { createdAt: 1 }, expireAfterSeconds: 365 * 86400  (1 year)
+```
+
+#### ActivityLog Schema
+
+```javascript
+// activity_logs collection
+{
+  _id: ObjectId,
+  session_id: ObjectId,           // FK → sessions
+  user_id: ObjectId,              // FK → users
+  company_id: ObjectId,           // FK → companies
+  batchId: String,                // Deduplication key
+  samples: [{
+    timestamp: Date,
+    status: String,                // "active" | "idle"
+    idleSeconds: Number,
+    activeWindow: {
+      title: String,
+      appName: String,
+      url: String,
+      category: String,            // "productive" | "neutral" | "unproductive"
+    },
+    input: {
+      keystrokes: Number,
+      mouseClicks: Number,
+      mouseDistance: Number,
+    },
+  }],
+  uploadedAt: Date,
+}
+
+// Indexes:
+// { batchId: 1 } unique (deduplication)
+// { user_id: 1, "samples.timestamp": -1 }
+// { company_id: 1, uploadedAt: -1 }
+// TTL: { uploadedAt: 1 }, expireAfterSeconds: 90 * 86400  (90 days)
+```
+
+#### Screenshot Schema
+
+```javascript
+// screenshots collection
+{
+  _id: ObjectId,
+  captureId: String,              // Agent-generated unique ID
+  session_id: ObjectId,           // FK → sessions
+  user_id: ObjectId,              // FK → users
+  company_id: ObjectId,           // FK → companies
+  s3Key: String,                  // "screenshots/{company_id}/{user_id}/{date}/{captureId}.jpg"
+  s3Url: String,                  // CloudFront URL (signed, expires in 1h)
+  displayId: String,
+  metadata: {
+    width: Number,
+    height: Number,
+    fileSize: Number,              // bytes
+    format: String,
+    capturedAt: Date,
+    activeWindow: String,
+    blurred: Boolean,
+  },
+  retentionExpiry: Date,           // 90 days from capture
+  createdAt: Date,
+}
+
+// Indexes:
+// { captureId: 1 } unique (deduplication)
+// { user_id: 1, createdAt: -1 }
+// { company_id: 1, createdAt: -1 }
+// TTL: { retentionExpiry: 1 }, expireAfterSeconds: 0  (auto-delete at expiry)
+```
+
+---
+
+### API Endpoints
+
+#### Authentication
+
+| Method | Endpoint | Body | Response | Auth |
+|--------|----------|------|----------|------|
+| POST | `/api/auth/login` | `{ email, password, device_id? }` | `{ token, user, monitoring_rules }` | None |
+| POST | `/api/auth/logout` | — | `{ success }` | JWT |
+| POST | `/api/auth/refresh` | `{ refreshToken }` | `{ token }` | JWT |
+| POST | `/api/auth/verify-device` | `{ device_id }` | `{ bound: true }` | JWT |
+
+#### Sessions
+
+| Method | Endpoint | Body | Response | Auth |
+|--------|----------|------|----------|------|
+| POST | `/api/sessions/start` | `{ device_id, timestamp }` | `{ session_id, startTime }` | JWT |
+| PUT | `/api/sessions/:id/pause` | `{ timestamp }` | `{ success }` | JWT |
+| PUT | `/api/sessions/:id/resume` | `{ timestamp }` | `{ success }` | JWT |
+| PUT | `/api/sessions/:id/end` | `{ timestamp, summary }` | `{ success }` | JWT |
+| GET | `/api/sessions/active` | — | `{ sessions[] }` | JWT (admin) |
+| POST | `/api/sessions/:id/force-end` | `{ reason }` | `{ success }` | JWT (admin) |
+
+#### Activity
+
+| Method | Endpoint | Body | Response | Auth |
+|--------|----------|------|----------|------|
+| POST | `/api/agent/activity` | `ActivityBatch` | `{ success }` | JWT |
+| POST | `/api/agent/heartbeat` | `{ timestamp, status }` | `{ commands[] }` | JWT |
+| GET | `/api/activity/:userId/timeline` | `?date=&range=` | `{ timeline[] }` | JWT (admin) |
+| GET | `/api/activity/:userId/summary` | `?period=daily\|weekly` | `{ summary }` | JWT (admin) |
+
+#### Screenshots
+
+| Method | Endpoint | Body | Response | Auth |
+|--------|----------|------|----------|------|
+| POST | `/api/agent/screenshots` | `multipart { file, metadata }` | `{ success, id }` | JWT |
+| GET | `/api/screenshots/:userId` | `?date=&page=&limit=` | `{ screenshots[], total }` | JWT (admin) |
+| GET | `/api/screenshots/:id/url` | — | `{ signedUrl }` | JWT (admin) |
+| POST | `/api/screenshots/bulk-download` | `{ ids[] }` | `{ downloadUrl }` | JWT (admin) |
+
+#### Admin
+
+| Method | Endpoint | Body | Response | Auth |
+|--------|----------|------|----------|------|
+| GET | `/api/admin/dashboard` | — | `{ stats }` | JWT (admin) |
+| PUT | `/api/admin/monitoring-rules` | `{ rules }` | `{ success }` | JWT (admin) |
+| POST | `/api/admin/invite` | `{ email, role }` | `{ inviteId }` | JWT (admin) |
+| GET | `/api/admin/reports` | `?type=&format=` | `{ report }` | JWT (admin) |
+
+---
+
+### Security Model
+
+#### JWT Structure
+
+```json
+{
+  "header": { "alg": "RS256", "typ": "JWT" },
+  "payload": {
+    "user_id": "ObjectId",
+    "company_id": "ObjectId",
+    "role": "user | sub_admin | company_admin",
+    "device_id": "uuid-bound-to-machine",
+    "iss": "teamtreck-api",
+    "aud": "teamtreck-agent",
+    "exp": 1234567890,
+    "iat": 1234567890
+  }
+}
+```
+
+#### Device Binding
+
+```
+1. First login from agent → generate device_id (UUID v4)
+2. Send device_id in login request
+3. Server stores device_id in user.devices[]
+4. Subsequent requests: JWT device_id must match request header X-Device-ID
+5. Max 3 devices per user (configurable per company)
+6. Admin can revoke device bindings
+```
+
+#### API Protection Layers
+
+```
+Request → Rate Limiter → CORS → JWT Verify → Role Check
+  → Company Isolation → Input Validation → Handler → Response
+
+1. Rate Limiting:    100 req/min per IP, 1000 req/min per user
+2. CORS:             Whitelist dashboard domain only
+3. JWT Verification: RS256 signature + expiry + audience check
+4. Role Guard:       Permission matrix per endpoint
+5. Tenant Isolation: Every query includes company_id from JWT
+6. Input Validation: Zod schemas for all request bodies
+7. Helmet.js:        Security headers (CSP, HSTS, X-Frame-Options)
+```
+
+---
+
+### Scaling Strategy (10,000 Users)
+
+| Component | Strategy | Config |
+|-----------|----------|--------|
+| **API Servers** | Horizontal auto-scaling (AWS ECS Fargate) | Min 3, Max 20 instances |
+| **MongoDB** | Atlas M30+ with read replicas | 3-node replica set, sharding by company_id |
+| **Redis** | ElastiCache cluster mode | 3 shards, 1 replica each |
+| **S3** | Standard tier + lifecycle rules | Intelligent-Tiering after 30 days |
+| **CDN** | CloudFront for signed screenshot URLs | Edge caching, 1h TTL |
+| **Queue** | BullMQ on Redis | Dedicated worker instances |
+| **Monitoring** | DataDog / CloudWatch | APM, custom metrics, alerts |
+
+#### Estimated Resource Usage (10K Users)
+
+```
+Screenshots:  10,000 users × 12/hour × 8 hours × 150KB avg = ~140 GB/day
+Activity:     10,000 users × 360 samples/hour × 8 hours = 28.8M samples/day
+Heartbeats:   10,000 users × 120/hour × 8 hours = 9.6M heartbeats/day
+API Requests: ~50M requests/day
+S3 Storage:   ~4.2 TB/month (before 90-day cleanup)
+MongoDB:      ~500 GB/month (with TTL indexes)
+```
+
+---
+
+### Recommended Tech Stack Versions
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **Electron** | 30.x LTS | Desktop agent |
+| **Node.js** | 20.x LTS | API server runtime |
+| **TypeScript** | 5.4+ | Type safety |
+| **Express** | 4.19+ / Fastify 4.x | HTTP framework |
+| **MongoDB** | 7.0+ (Atlas) | Primary database |
+| **Mongoose** | 8.x | ODM |
+| **Redis** | 7.2+ | Caching, sessions, queues |
+| **BullMQ** | 5.x | Job queue |
+| **AWS SDK** | v3 | S3, SES, CloudFront |
+| **React** | 18.3+ | Dashboard frontend |
+| **Vite** | 5.x | Build tooling |
+| **Sharp** | 0.33+ | Image processing |
+| **Zod** | 3.x | Input validation |
+| **Helmet** | 7.x | Security headers |
+| **Winston** | 3.x | Server logging |
+| **Vitest** | 1.x | Testing |
+| **Docker** | 24+ | Containerization |
+| **Terraform** | 1.7+ | Infrastructure as code |
